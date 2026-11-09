@@ -1,0 +1,29 @@
+# W1：采集与清洗
+requests>=2.31
+beautifulsoup4>=4.12
+lxml>=5.2
+
+# W2：Spec / 计算（已启用）
+pydantic>=2.7
+
+# W2：LLM（有 Key 后再装，DeepSeek/百炼走 OpenAI 兼容接口）
+# openai>=1.30
+# numpy>=1.26
+
+# W3：渲染（拓扑图用 Pillow 自绘，Word 用 python-docx；不走 Graphviz，无需联网安装）
+pillow>=10.0
+python-docx>=1.1
+
+# W4：Web 服务（本地演示界面）
+fastapi>=0.111
+uvicorn>=0.30
+
+# W4：竞品采集（海康官网反爬需 TLS 指纹伪装）
+curl_cffi>=0.7
+
+# P1：LangGraph 编排（只用于 checkpoint 断点续跑 / human-in-loop / 条件回边）
+langgraph>=1.2
+langgraph-checkpoint-sqlite>=3.1
+
+# P1：MCP Server（mcp 2.x，FastMCP 已更名 MCPServer）
+mcp>=2.3

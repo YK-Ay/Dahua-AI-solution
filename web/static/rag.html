@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>智能问答 · 大华解决方案助手</title>
+  <link rel="stylesheet" href="/static/styles.css?v=20261107-2000">
+  <style>[hidden]{display:none!important}</style>
+  <style>
+    .rag-wrap { max-width: 1180px; margin: 0 auto; padding: 28px 24px 70px; }
+    .rag-hero { padding: 18px 0 24px; border-bottom: 1px solid var(--line); margin-bottom: 22px; }
+    .rag-hero h1 { font-size: 30px; margin: 8px 0 10px; color: var(--ink); letter-spacing: .5px; }
+    .rag-hero p { color: var(--ink-2); line-height: 1.75; max-width: 840px; margin: 0; font-size: 14px; }
+    .eyebrow { color: var(--red); font-size: 11px; font-weight: 700; letter-spacing: 2px; }
+    .rag-engine {
+      display: flex; flex-wrap: wrap; gap: 10px 22px; margin-top: 18px; padding: 12px 16px;
+      background: var(--red-soft); border: 1px solid var(--line-strong); border-radius: 10px;
+      font-size: 12px; color: var(--ink-2);
+    }
+    .rag-engine b { color: var(--red); }
+    .rag-engine .eng-item { display: inline-flex; align-items: center; gap: 6px; }
+    .rag-panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 20px; margin-bottom: 20px; }
+    .rag-label { display: block; font-size: 12px; font-weight: 700; color: var(--ink-2); margin-bottom: 8px; }
+    .rag-query {
+      width: 100%; min-height: 96px; resize: vertical; box-sizing: border-box;
+      border: 1px solid var(--line); border-radius: 9px; padding: 13px 14px;
+      font: 14px/1.7 inherit; color: var(--ink); background: var(--bg);
+    }
+    .rag-query:focus { outline: none; border-color: var(--red); box-shadow: 0 0 0 3px var(--red-glow); }
+    .rag-controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 14px; }
+    .rag-controls select, .rag-controls button { font: 13px inherit; border-radius: 8px; padding: 9px 12px; }
+    .rag-controls select { border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
+    .rag-btn {
+      background: var(--red); color: #fff; border: 1px solid var(--red); font-weight: 700;
+      cursor: pointer; padding: 9px 20px !important; transition: .15s;
+    }
+    .rag-btn:hover { background: var(--red-dark); }
+    .rag-btn:disabled { opacity: .55; cursor: wait; }
+    .rag-examples { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+    .rag-chip {
+      font-size: 12px; padding: 6px 11px; border-radius: 999px; cursor: pointer;
+      border: 1px solid var(--line); background: var(--bg-2); color: var(--ink-2);
+    }
+    .rag-chip:hover { border-color: var(--red); color: var(--red); }
+    .rag-warn { background: #fff8e8; border: 1px solid #f0d18a; color: #7a5300;
+      border-radius: 9px; padding: 11px 14px; font-size: 13px; margin-bottom: 14px; }
+    .rag-warn ul { margin: 6px 0 0; padding-left: 20px; }
+    .rag-answer { font-size: 14px; line-height: 1.85; color: var(--ink); }
+    .rag-answer h2 { font-size: 19px; margin: 22px 0 10px; color: var(--red-dark); }
+    .rag-answer h3 { font-size: 15px; margin: 18px 0 8px; color: var(--ink); }
+    .rag-answer p { margin: 8px 0; }
+    .rag-answer hr { border: 0; border-top: 1px solid var(--line); margin: 18px 0; }
+    .rag-answer blockquote { margin: 8px 0; padding: 7px 12px; border-left: 3px solid var(--red);
+      background: var(--bg-2); color: var(--ink-2); border-radius: 0 6px 6px 0; }
+    .rag-answer table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 13px; }
+    .rag-answer th, .rag-answer td { border: 1px solid var(--line); padding: 8px 10px; text-align: left; }
+    .rag-answer th { background: var(--red-soft); color: var(--red-dark); }
+    .rag-answer code { background: var(--bg-2); padding: 1px 5px; border-radius: 4px; font-family: var(--mono); font-size: 12px; }
+    .ref-chip {
+      display: inline-block; font-size: 11px; line-height: 1.5; padding: 0 6px; margin: 0 2px;
+      border: 1px solid var(--line-strong); border-radius: 5px; background: var(--red-soft);
+      color: var(--red); cursor: pointer; vertical-align: baseline; font-family: inherit;
+    }
+    .ref-chip:hover { background: var(--red); color: #fff; }
+    .rag-disclaimer { margin-top: 18px; padding-top: 12px; border-top: 1px dashed var(--line);
+      font-size: 12px; color: var(--muted); }
+    .rag-src-head { font-size: 15px; font-weight: 700; color: var(--ink); margin: 4px 0 14px; }
+    .rag-src-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
+    .rag-src {
+      background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--red);
+      border-radius: 9px; padding: 13px 15px; transition: .2s;
+    }
+    .rag-src.flash { box-shadow: 0 0 0 3px var(--red-glow); border-color: var(--red); }
+    .rag-src-t { font-size: 13px; font-weight: 700; color: var(--ink); margin-bottom: 6px; }
+    .rag-src-m { font-size: 11px; color: var(--muted); line-height: 1.7; }
+    .rag-src-s { font-size: 12px; color: var(--ink-2); margin-top: 8px; line-height: 1.65;
+      max-height: 88px; overflow: hidden; }
+    .rag-src a { color: var(--red); text-decoration: none; }
+    .rag-loading { color: var(--muted); font-size: 13px; padding: 16px 0; }
+    .rag-meter { font-size: 11px; color: var(--muted); margin-top: 10px; }
+    @media (max-width: 720px) { .rag-wrap { padding: 18px 14px 50px; } .rag-hero h1 { font-size: 24px; } }
+  </style>
+</head>
+<body>
+  <header class="topnav">
+    <div class="nav-brand">
+      <span class="brand-mark">DH</span>
+      <span class="brand-name">大华解决方案助手<small>DAHUA SOLUTION DESK</small></span>
+    </div>
+    <nav class="nav-links">
+      <a href="/agent">Agent 工作台</a>
+      <a href="/kb">知识库</a>
+      <a href="/rag" class="active">智能问答</a>
+      <a href="/compare">竞品对比</a>
+    </nav>
+    <div class="nav-status"><span class="dot"></span>带来源标注 · 反幻觉</div>
+  </header>
+
+  <main class="rag-wrap">
+    <section class="rag-hero">
+      <span class="eyebrow">RAG · EVIDENCE FIRST</span>
+      <h1>带溯源的智能问答</h1>
+      <p>混合检索（关键词 + 语义近似，RRF 融合）从方案文档、官方配单、产品库里找出依据，再生成回答。
+         每个型号、每个价格都要求标注 <b>[资料N]</b>，资料没覆盖就直说「需进一步核实」，不替你猜数字。</p>
+      <div class="rag-engine" id="rag-engine">正在读取检索索引…</div>
+    </section>
+
+    <section class="rag-panel">
+      <label class="rag-label" for="rag-query">描述你的项目需求，或直接问某个型号</label>
+      <textarea class="rag-query" id="rag-query" placeholder="例如：小区停车场出入口要抓拍车牌，推荐哪些设备，价格多少？"></textarea>
+      <div class="rag-controls">
+        <select id="rag-mode" aria-label="检索模式">
+          <option value="solution">主方案（只用大华资料）</option>
+          <option value="competitor">竞品对比（只用竞品资料）</option>
+          <option value="all">全库调试（可能混厂商）</option>
+        </select>
+        <select id="rag-industry" aria-label="行业筛选">
+          <option value="">不限行业</option>
+          <option value="小区">小区 / 社区</option>
+          <option value="园区">园区</option>
+          <option value="工厂">工厂园区</option>
+          <option value="校园">智慧校园</option>
+          <option value="停车">城市停车</option>
+          <option value="商铺">中小商铺</option>
+          <option value="商超">连锁商超</option>
+          <option value="交通">智能交通</option>
+          <option value="化工">中小化工厂</option>
+          <option value="酒店">酒店民宿</option>
+        </select>
+        <select id="rag-topk" aria-label="引用资料数量">
+          <option value="5">引用 5 篇</option>
+          <option value="8" selected>引用 8 篇</option>
+          <option value="12">引用 12 篇</option>
+        </select>
+        <button class="rag-btn" id="rag-submit">生成带溯源的回答</button>
+        <button class="rag-chip" id="rag-copy" style="border-radius:8px">复制答案</button>
+      </div>
+      <div class="rag-examples" id="rag-examples"></div>
+      <div class="rag-meter" id="rag-meter"></div>
+    </section>
+
+    <section class="rag-panel" id="rag-result" hidden>
+      <div id="rag-warn"></div>
+      <div class="rag-answer" id="rag-answer"></div>
+      <div class="rag-disclaimer" id="rag-disclaimer"></div>
+    </section>
+
+    <section id="rag-sources-section" hidden>
+      <div class="rag-src-head">引用来源 <span id="rag-src-count" style="color:var(--muted);font-weight:400;font-size:12px"></span></div>
+      <div class="rag-src-grid" id="rag-sources"></div>
+    </section>
+  </main>
+
+  <script src="/static/rag.js?v=20261106-1600"></script>
+</body>
+</html>

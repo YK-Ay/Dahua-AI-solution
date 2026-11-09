@@ -1,0 +1,48 @@
+# ===== 凭证：严禁入库 =====
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*_secret.*
+secrets.json
+
+# ===== 数据库与备份（含采集数据，体积大且不宜公开）=====
+db/*.sqlite
+db/*.sqlite-*
+db/*.sqlite.bak*
+db/*.bak
+*.sqlite
+*.sqlite3
+*.db
+*.bak
+
+# ===== 运行产物 / 采集原始数据 / 导出方案 =====
+data/
+*.log
+checkpoints/
+.pytest_cache/
+
+# ===== 官网抓取的产品图（版权 + 体积；代码已内置在线 URL 回退）=====
+web/static/img/
+
+# ===== 内部交接 / 过程文档（含内部数据快照与备份路径）=====
+HANDOFF.md
+项目总结-*.md
+
+# ===== Python 缓存与虚拟环境 =====
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+.coverage
+htmlcov/
+
+# ===== 编辑器 / 系统 =====
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# ===== 本地工作区记忆 =====
+.workbuddy/

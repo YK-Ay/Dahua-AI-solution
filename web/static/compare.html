@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>竞品对比 · 大华 vs 海康</title>
+  <link rel="stylesheet" href="/static/styles.css?v=20261107-2000">
+  <style>[hidden]{display:none!important}</style>
+</head>
+<body>
+  <header class="topnav">
+    <div class="nav-brand">
+      <span class="brand-mark">DH</span>
+      <span class="brand-name">大华解决方案助手<small>DAHUA SOLUTION DESK</small></span>
+    </div>
+    <nav class="nav-links">
+      <a href="/agent">Agent 工作台</a>
+      <a href="/kb">知识库</a>
+      <a href="/rag">智能问答</a>
+      <a href="/compare" class="active">竞品对比</a>
+    </nav>
+    <div class="nav-status"><span class="dot"></span>官网公开参数 · 缺项不推断</div>
+  </header>
+
+  <main class="workbench">
+    <section class="hero" style="padding-bottom:18px">
+      <div class="hero-text">
+        <span class="eyebrow">BENCHMARK · DAHUA vs HIKVISION</span>
+        <h1>大华 <span class="hl">vs</span> 海康 竞品对比</h1>
+        <p>自己选机型，不再默认拿两款摄像头硬比。按设备类目各选一款大华 / 海康产品，系统用官网公开参数逐字段对齐；缺项明确标注，绝不推断。</p>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-head flex">
+        <div>
+          <span class="eyebrow">How to use · 三步出对比表</span>
+          <h2>选型 → 配对 → 出结果</h2>
+          <p>三类设备可单独对比，也可以组成「一套典型监控系统」整组对比并导出一份 Word。</p>
+        </div>
+      </div>
+
+      <div class="card-body">
+        <div class="cmp-guide">
+          <div class="cmp-step"><div class="no">1</div><div>
+            <div class="tt">选设备类目</div>
+            <div class="ds">网络摄像机（IPC）/ NVR / PoE交换机，三类即一套典型监控链路。</div>
+          </div></div>
+          <div class="cmp-step"><div class="no">2</div><div>
+            <div class="tt">左右各选一款</div>
+            <div class="ds">左栏大华产品库、右栏海康官网参数机型；带官网技术参数的排在最前。</div>
+          </div></div>
+          <div class="cmp-step"><div class="no">3</div><div>
+            <div class="tt">生成对比表</div>
+            <div class="ds">逐字段对齐、给出判定与销售话术，可下载 DOCX；三类的结果还能合并成整组。</div>
+          </div></div>
+        </div>
+
+        <div class="cmp-top">
+          <div class="cmp-cats" id="cats"><div class="cmp-empty">正在读取类目…</div></div>
+          <div class="topo-card">
+            <h4>典型监控系统 · 示意拓扑</h4>
+            <div class="hint">三类设备组成一条链路，不是三款摄像头相互比较。</div>
+            <svg class="topo-svg" viewBox="0 0 280 130" xmlns="http://www.w3.org/2000/svg" aria-label="示意拓扑">
+              <defs>
+                <marker id="ar" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+                  <path d="M0,0 L7,3.5 L0,7 z" fill="#e60012"/>
+                </marker>
+              </defs>
+              <g fill="#fff" stroke="#e60012" stroke-width="1.6">
+                <rect x="8" y="26" width="66" height="46" rx="7"/>
+                <rect x="106" y="26" width="66" height="46" rx="7"/>
+                <rect x="204" y="26" width="66" height="46" rx="7"/>
+              </g>
+              <g fill="none" stroke="#e60012" stroke-width="1.6">
+                <circle cx="32" cy="44" r="7"/><path d="M20 60 L44 60 M26 60 L38 54"/>
+                <rect x="126" y="40" width="26" height="13" rx="2"/><path d="M132 53 L132 60 M146 53 L146 60"/>
+                <rect x="222" y="38" width="30" height="20" rx="2"/><path d="M228 58 L246 58"/>
+              </g>
+              <g font-family="sans-serif" font-size="10" font-weight="700" fill="#1a1d24" text-anchor="middle">
+                <text x="41" y="86">IPC 摄像机</text>
+                <text x="139" y="86">PoE 交换机</text>
+                <text x="237" y="86">NVR / 存储</text>
+              </g>
+              <g stroke="#e60012" stroke-width="1.5" marker-end="url(#ar)" opacity=".8">
+                <path d="M76 49 L102 49"/><path d="M174 49 L200 49"/>
+              </g>
+              <text x="140" y="112" text-anchor="middle" font-family="sans-serif" font-size="9.5" fill="#6b7280">每一类各选一款 → 三类即一组</text>
+            </svg>
+            <div class="topo-blank">留白区：可粘贴 Visio / 方案拓扑小图（示意，不参与参数对比）</div>
+          </div>
+        </div>
+
+        <div class="cmp-pickers">
+          <div class="cmp-col dh" id="col-dahua">
+            <div class="cmp-col-head"><div><div class="t">大华产品库</div>
+              <div class="s" id="dh-sub">选择一款大华产品</div></div></div>
+            <input class="cmp-search" id="q-dahua" type="text" placeholder="搜索大华型号 / 名称…">
+            <div class="cmp-list" id="list-dahua"></div>
+            <button class="btn ghost cmp-more" id="more-dahua" hidden>加载更多</button>
+          </div>
+          <div class="cmp-col hk" id="col-hik">
+            <div class="cmp-col-head"><div><div class="t">海康官网参数机型</div>
+              <div class="s" id="hk-sub">选择一款海康产品</div></div></div>
+            <input class="cmp-search" id="q-hik" type="text" placeholder="搜索海康型号…">
+            <div class="cmp-list" id="list-hik"></div>
+            <button class="btn ghost cmp-more" id="more-hik" hidden>加载更多</button>
+          </div>
+        </div>
+
+        <div class="cmp-selected" id="selected">
+          <span>当前类目：<b id="sel-cat">—</b></span>
+          <span class="pill dh" id="sel-dahua">大华：未选择</span>
+          <span class="pill hk" id="sel-hik">海康：未选择</span>
+          <div class="cmp-actions">
+            <button class="btn primary" id="btn-pair" disabled>生成对比表</button>
+            <button class="btn ghost" id="btn-group" disabled>整组对比（三类）</button>
+          </div>
+        </div>
+
+        <div class="cmp-empty" id="empty" style="margin-top:18px">
+          <div class="big">还没有开始对比</div>
+          <div>先在上方点一个类目，再从左 / 右两栏各选一款产品，点「生成对比表」。<br>
+            也可以三类都选好，直接点「整组对比」一次生成整套链路的对照结果。</div>
+        </div>
+
+        <div class="cmp-result" id="result" hidden></div>
+        <div id="group-result"></div>
+
+        <p class="cmp-tip" id="data-note"></p>
+      </div>
+    </section>
+  </main>
+
+  <script src="/static/compare.js?v=20261106-1600"></script>
+</body>
+</html>

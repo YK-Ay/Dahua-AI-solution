@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>知识库 · 大华解决方案助手</title>
+  <link rel="stylesheet" href="/static/styles.css?v=20261107-2000">
+  <!-- 内联兜底：即使浏览器缓存了旧版 styles.css，hidden 也必须生效 -->
+  <style>[hidden]{display:none!important}</style>
+</head>
+<body>
+  <header class="topnav">
+    <div class="nav-brand">
+      <span class="brand-mark">DH</span>
+      <span class="brand-name">大华解决方案助手<small>DAHUA SOLUTION DESK</small></span>
+    </div>
+    <nav class="nav-links">
+      <a href="/agent">Agent 工作台</a>
+      <a href="/kb" class="active">知识库</a>
+      <a href="/rag">智能问答</a>
+      <a href="/compare">竞品对比</a>
+    </nav>
+    <div class="nav-status"><span class="dot"></span>本地知识库 · 可同步</div>
+  </header>
+
+  <main class="kb-wrap">
+    <section class="kb-hero">
+      <div>
+        <span class="eyebrow">KNOWLEDGE BASE</span>
+        <h1>知识库可视化中心</h1>
+        <p>产品、解决方案、行业案例与竞品四类资产分栏查看。每个 Tab 会整体替换下方内容，不再往产品列表下面堆叠。</p>
+      </div>
+      <div class="kb-sync">
+        <button class="btn-sync" id="btn-sync">⟳ 同步最新大华产品与方案</button>
+      </div>
+    </section>
+
+    <section class="stat-cards" id="stat-cards">
+      <div class="stat-card">
+        <div class="ic">📦</div>
+        <div class="num" id="st-products">—</div>
+        <div class="lbl">产品 Product</div>
+        <div class="sub" id="st-products-sub">来自大华云商 / 官网</div>
+      </div>
+      <div class="stat-card">
+        <div class="ic">🧩</div>
+        <div class="num" id="st-solutions">—</div>
+        <div class="lbl">解决方案 Solution</div>
+        <div class="sub" id="st-solutions-sub">含云商官方配单</div>
+      </div>
+      <div class="stat-card">
+        <div class="ic">🏢</div>
+        <div class="num" id="st-cases">—</div>
+        <div class="lbl">行业案例 Case</div>
+        <div class="sub" id="st-cases-sub">官网案例原文</div>
+      </div>
+      <div class="stat-card">
+        <div class="ic">⚔️</div>
+        <div class="num" id="st-competitor">—</div>
+        <div class="lbl">竞品参数事实</div>
+        <div class="sub" id="st-competitor-sub">大华 / 海康</div>
+      </div>
+    </section>
+
+    <div class="sync-log" id="kb-log" hidden></div>
+
+    <div class="basket-bar">
+      <button class="basket-btn" id="open-compare">⚔️ 对比篮 <span class="n" id="n-compare">0</span></button>
+      <button class="basket-btn" id="open-bom">🧾 配单篮 <span class="n" id="n-bom">0</span></button>
+    </div>
+
+    <div class="kb-tabs" id="kb-tabs">
+      <button class="kb-tab active" data-tab="products">产品中心</button>
+      <button class="kb-tab" data-tab="solutions">解决方案</button>
+      <button class="kb-tab" data-tab="cases">行业案例</button>
+      <button class="kb-tab" data-tab="competitors">竞品</button>
+    </div>
+
+    <div class="kb-note" id="view-note">正在加载知识库口径说明…</div>
+
+    <!-- 产品中心：左侧类目树 + 右侧搜索与横向列表 -->
+    <section id="pc-view" class="pc">
+      <aside class="pc-side">
+        <h4>产品类目</h4>
+        <div id="pc-cats"></div>
+      </aside>
+      <div class="pc-main">
+        <div class="pc-toolbar">
+          <div class="kb-search"><input id="pc-q" type="text" placeholder="搜索型号 / 名称 / 关键字…"></div>
+        </div>
+        <div class="kb-meta-line" id="pc-meta">加载中…</div>
+        <div class="pc-list" id="pc-list"></div>
+        <button class="btn ghost kb-more" id="pc-more" hidden>加载更多</button>
+      </div>
+    </section>
+
+    <!-- 其它 tab 的网格视图：与产品中心互斥显示 -->
+    <section id="grid-view" hidden>
+      <div class="kb-toolbar">
+        <div class="kb-search"><input id="kb-q" type="text" placeholder="搜索名称 / 型号 / 行业…"></div>
+      </div>
+      <div class="view-switch" id="comp-view-switch" hidden>
+        <button data-view="models" class="active">按机型查看</button>
+        <button data-view="facts">按参数明细查看</button>
+      </div>
+      <div class="brand-filter" id="brand-filter" hidden></div>
+      <div class="facts-filter" id="facts-filter" hidden>
+        <label>品牌 <select id="fact-brand"></select></label>
+        <label>类目 <select id="fact-category"></select></label>
+        <label>机型 <select id="fact-model"></select></label>
+        <button class="btn ghost" id="fact-reset">重置筛选</button>
+      </div>
+      <div class="kb-meta-line" id="kb-meta">加载中…</div>
+      <div class="kb-grid" id="kb-grid"></div>
+      <div class="facts-table-wrap" id="facts-wrap" hidden>
+        <table>
+          <thead><tr><th>品牌</th><th>类目</th><th>机型</th><th>参数分区</th><th>字段</th><th>官网原文值</th><th>来源</th></tr></thead>
+          <tbody id="facts-body"></tbody>
+        </table>
+      </div>
+      <button class="btn ghost kb-more" id="kb-more" hidden>加载更多</button>
+    </section>
+
+    <section class="kb-graph-card">
+      <h3>知识图谱</h3>
+      <div class="sub" id="graph-sub">中心为「大华知识库」，四大实体按体量关联，节点越大体量越大。</div>
+      <svg class="kb-graph" id="kb-graph" viewBox="0 0 760 460" preserveAspectRatio="xMidYMid meet"
+           xmlns="http://www.w3.org/2000/svg" role="img" aria-label="知识图谱"></svg>
+    </section>
+
+    <section class="kb-dist">
+      <h3>产品类目分布</h3>
+      <div id="kb-dist-list"></div>
+    </section>
+
+    <footer class="kb-foot">数据来源：大华云商公开产品/方案（匿名游客接口）、大华官网产品与案例页、海康官网公开参数页 · 本地 SQLite</footer>
+  </main>
+
+  <div class="basket-drawer" id="basket" hidden>
+    <div class="basket-head">
+      <h3 id="basket-title">清单</h3>
+      <button class="bi-x" id="basket-close" aria-label="关闭">✕</button>
+    </div>
+    <div class="basket-body" id="basket-body"></div>
+    <div class="basket-foot" id="basket-foot"></div>
+  </div>
+
+  <script src="/static/kb.js?v=20261107-2000"></script>
+</body>
+</html>

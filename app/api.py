@@ -1,0 +1,792 @@
+"""Web 服务：需求 → Spec → 拓扑图 / Word（P0 三页流程）。
+
+P0 只暴露三个动作：
+  1. POST /api/spec    需求文本 → Spec（后端规则引擎 + 产品库选型）
+  2. POST /api/render  审阅后的 Spec → 重新核算 → 拓扑 PNG + Word DOCX
+  3. GET  /api/export/{文件名}  下载渲染产物
+
+所有数字仍由 calc.py 确定性计算，前端只做展示与编辑，不参与计算口径。
+"""
+from __future__ import annotations
+
+import json
+import re
+import sqlite3
+import subprocess
+import sys
+import threading
+import uuid
+from datetime import datetime
+from pathlib import Path
+from urllib.parse import quote
+
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
+from starlette.concurrency import run_in_threadpool
+
+from config.settings import BASE_DIR, DB_PATH
+
+from .rag import service as rag_service
+from .compare import FIELDS, compare as compare_competitor, export_docx
+from . import compare_service, netcheck
+from agent import service as agent_service
+from agent.parser import status as agent_parser_status
+from agent.tools import status as agent_tools_status
+
+WEB_DIR = BASE_DIR / "web" / "static"
+EXPORT_DIR = BASE_DIR / "data" / "exports"
+
+DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
+
+class RagRequest(BaseModel):
+    query: str
+    mode: str = "solution"       # solution / competitor / all
+    industry: str = ""
+    top_k: int = 8
+
+
+class ComparePair(BaseModel):
+    category: str
+    dahua: str
+    hik: str
+
+
+class GroupCompareRequest(BaseModel):
+    pairs: list[ComparePair]
+
+
+class AgentStartRequest(BaseModel):
+    text: str
+    name: str | None = None
+    lanes: int | None = None
+    retention_days: int | None = None
+
+
+class AgentResumeRequest(BaseModel):
+    answer: str | dict
+
+
+app = FastAPI(title="大华解决方案助手", version="1.1")
+app.mount("/static", StaticFiles(directory=WEB_DIR), name="static")
+
+
+@app.middleware("http")
+async def _no_cache_pages_and_assets(request, call_next):
+    """页面与静态资源一律不缓存。
+
+    之前改了 styles.css 但浏览器仍用旧副本，导致 [hidden] 规则没生效、
+    切 Tab 后产品区依旧堆在上面。这里从服务端根除缓存问题。
+    """
+    resp = await call_next(request)
+    path = request.url.path
+    if (path in ("/kb", "/rag", "/compare", "/agent")
+            or path.startswith("/static/")
+            or path.startswith("/kb/solution")):
+        resp.headers["Cache-Control"] = "no-store, max-age=0, must-revalidate"
+        resp.headers["Pragma"] = "no-cache"
+        resp.headers["Expires"] = "0"
+    return resp
+
+
+@app.get("/", include_in_schema=False)
+def index():
+    """原「工作台」已并入 Agent 工作台，根路径重定向过去。"""
+    return RedirectResponse(url="/agent", status_code=307)
+
+
+@app.get("/api/health")
+def health() -> dict:
+    return {"ok": True}
+
+
+@app.get("/compare", include_in_schema=False)
+def compare_page() -> FileResponse:
+    return FileResponse(WEB_DIR / "compare.html")
+
+
+@app.get("/api/compare")
+def api_compare(category: str = "网络摄像机") -> dict:
+    if category not in FIELDS:
+        raise HTTPException(status_code=404, detail={"message": f"不支持的对比类目：{category}", "gaps": []})
+    try:
+        official = compare_service.OFFICIAL_PAIRS.get(category)
+        # 补采后同类目有几十款机型，compare() 内部按 field_label 覆盖会串型号；
+        # 旧路由固定返回「官网同档代表款」这一组，保证结果稳定可回溯。
+        if official:
+            return compare_service.pair(category, official[0], official[1])
+        return compare_competitor(category)
+    except ValueError as exc:
+        raise HTTPException(status_code=503, detail={"message": str(exc), "gaps": []}) from exc
+
+
+# ---------------------------------------------------------------------------
+# 竞品对比（新）：类目 → 双方产品池 → 各选一款 → 逐字段对比
+# ---------------------------------------------------------------------------
+
+@app.get("/api/compare/categories")
+def api_compare_categories() -> dict:
+    """三个类目及双方可选产品数 / 参数覆盖情况（前端引导页用）。"""
+    return compare_service.categories()
+
+
+@app.get("/api/compare/products")
+def api_compare_products(
+    category: str, brand: str, q: str = "", offset: int = 0, limit: int = 20
+) -> dict:
+    return compare_service.products(category, brand, q, offset, limit)
+
+
+@app.get("/api/compare/pair")
+def api_compare_pair(category: str, dahua: str, hik: str) -> dict:
+    try:
+        return compare_service.pair(category, dahua, hik)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail={"message": str(exc), "gaps": []}) from exc
+
+
+def _pair_result(category: str, dahua: str, hik: str) -> dict:
+    if category not in FIELDS:
+        raise ValueError(f"不支持的对比类目：{category}")
+    return compare_service.pair(category, dahua, hik)
+
+
+@app.get("/api/compare/docx")
+async def api_compare_docx(
+    category: str = "网络摄像机", dahua: str = "", hik: str = ""
+) -> FileResponse:
+    """单组对比导出。传 dahua/hik 时导出自定义配对，否则导出官网代表款对比。"""
+    stamp = datetime.now().strftime("%H%M%S")
+    out = EXPORT_DIR / f"竞品对比-{_safe_name(category)}-{stamp}.docx"
+
+    def build() -> None:
+        if dahua and hik:
+            result = _pair_result(category, dahua, hik)
+        else:
+            official = compare_service.OFFICIAL_PAIRS.get(category)
+            result = (_pair_result(category, official[0], official[1])
+                      if official else compare_competitor(category))
+        export_docx(result, out)
+
+    try:
+        await run_in_threadpool(build)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail={"message": str(exc), "gaps": []}) from exc
+    return FileResponse(out, media_type=DOCX_MIME, filename=out.name)
+
+
+@app.post("/api/compare/group/docx")
+async def api_compare_group_docx(req: GroupCompareRequest) -> FileResponse:
+    """整组对比导出：IPC / NVR / PoE 三组结果合并成一份 DOCX。"""
+    if not req.pairs:
+        raise HTTPException(status_code=400, detail={"message": "没有可导出的对比组"})
+    stamp = datetime.now().strftime("%H%M%S")
+    out = EXPORT_DIR / f"竞品对比-整组-{stamp}.docx"
+
+    def build() -> None:
+        from docx import Document
+        from docx.enum.text import WD_ALIGN_PARAGRAPH
+        from docx.shared import Cm
+
+        from .word import ACCENT, MUTED, _heading, _para, _table
+
+        results = [_pair_result(p.category, p.dahua, p.hik) for p in req.pairs]
+        doc = Document()
+        sec = doc.sections[0]
+        sec.left_margin = sec.right_margin = Cm(2)
+        _para(doc, "竞品对比 · 典型监控系统整组", 20, True, ACCENT,
+              WD_ALIGN_PARAGRAPH.CENTER, 2)
+        _para(doc, "大华 vs 海康 · 三类设备各选一款（官网公开参数）", 11, False,
+              MUTED, WD_ALIGN_PARAGRAPH.CENTER, 8)
+        for r in results:
+            _heading(doc, f"{r['category']}：大华 {r['dahua_model']} vs 海康 {r['hik_model']}")
+            s = r["summary"]
+            _para(doc, f"共 {len(r['rows'])} 个可比字段：同档 {s['same']} 项、大华占优 {s['dahua']} 项、"
+                       f"海康占优 {s['hik']} 项、口径不同 {s['qualitative']} 项、仅一方公开 "
+                       f"{s['only_dahua'] + s['only_hik']} 项。", 10, space_after=4)
+            _table(doc, ["字段", "大华（归一化）", "海康（归一化）", "判定", "差异 / 口径说明"],
+                   [[x["field"], x["dahua_value"], x["hik_value"], x["status_label"],
+                     "；".join(y for y in (x["delta"], x["note"]) if y)] for x in r["rows"]],
+                   [2.6, 4.2, 4.2, 2.0, 4.0])
+            _para(doc, r["disclaimer"], 8.5, False, MUTED, space_after=8)
+        _para(doc, "本表由程序从双方官网公开参数页 / 本地产品库生成，仅作售前参考；"
+                    "缺失项不作推断，交付前须人工复核。", 8.5, False, MUTED, space_after=0)
+        doc.save(out)
+
+    try:
+        await run_in_threadpool(build)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail={"message": str(exc), "gaps": []}) from exc
+    return FileResponse(out, media_type=DOCX_MIME, filename=out.name)
+
+
+@app.get("/api/export/{filename}")
+def export_file(filename: str, inline: int = 0) -> FileResponse:
+    path = EXPORT_DIR / filename
+    if Path(filename).name != filename or not path.is_file():
+        raise HTTPException(status_code=404, detail={"message": "文件不存在或已过期", "gaps": []})
+    media = DOCX_MIME if path.suffix.lower() == ".docx" else "image/png"
+    if inline:
+        return FileResponse(path, media_type=media)
+    return FileResponse(path, media_type=media, filename=filename)
+
+
+# ---------------------------------------------------------------------------
+# 知识库可视化：统计 + 联网同步（大华云商最新产品 / 方案）
+# ---------------------------------------------------------------------------
+
+SYNC_JOBS: dict[str, dict] = {}
+_SYNC_LOCK = threading.Lock()
+
+
+def _kb_stats() -> dict:
+    """汇总知识库体量、分布与最近同步时间。"""
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.row_factory = sqlite3.Row
+
+    def one(sql: str):
+        row = conn.execute(sql).fetchone()
+        return row[0] if row else 0
+
+    def rows(sql: str) -> list[dict]:
+        return [dict(r) for r in conn.execute(sql).fetchall()]
+
+    try:
+        products = one("SELECT COUNT(*) FROM products")
+        solutions = one("SELECT COUNT(*) FROM solutions")
+        cases = one("SELECT COUNT(*) FROM pages")
+        competitor = one("SELECT COUNT(*) FROM competitor_facts")
+        competitor_hik = one("SELECT COUNT(*) FROM competitor_facts WHERE brand='海康'")
+        competitor_models = one("SELECT COUNT(DISTINCT brand || '|' || model) FROM competitor_facts")
+        competitor_hik_models = one("SELECT COUNT(DISTINCT model) FROM competitor_facts WHERE brand='海康'")
+        boms = one("SELECT COUNT(*) FROM boms")
+        bom_items = one("SELECT COUNT(*) FROM bom_items")
+        solutions_with_bom = one(
+            "SELECT COUNT(*) FROM solutions s JOIN boms b ON b.scheme_id=s.sol_id"
+        )
+        cases_fetched_at = one("SELECT MAX(fetched_at) FROM pages")
+        last_product_sync = one("SELECT MAX(collected_at) FROM products")
+        last_solution_sync = one("SELECT MAX(collected_at) FROM solutions")
+
+        product_categories = rows(
+            "SELECT class_name AS name, COUNT(*) AS c FROM products "
+            "GROUP BY class_name ORDER BY c DESC LIMIT 14"
+        )
+        solution_scenes = rows(
+            "SELECT COALESCE(scene_name,'未知') AS name, COUNT(*) AS c "
+            "FROM solutions GROUP BY scene_name ORDER BY c DESC"
+        )
+        product_directions = rows(
+            "SELECT COALESCE(direction,'未知') AS name, COUNT(*) AS c "
+            "FROM products GROUP BY direction ORDER BY c DESC"
+        )
+    finally:
+        conn.close()
+
+    return {
+        "products": products,
+        "solutions": solutions,
+        "cases": cases,
+        "competitor": competitor,
+        "competitor_hik": competitor_hik,
+        "competitor_models": competitor_models,
+        "competitor_hik_models": competitor_hik_models,
+        "boms": boms,
+        "bom_items": bom_items,
+        "solutions_with_bom": solutions_with_bom,
+        "cases_fetched_at": cases_fetched_at,
+        "last_product_sync": last_product_sync,
+        "last_solution_sync": last_solution_sync,
+        "product_categories": product_categories,
+        "solution_scenes": solution_scenes,
+        "product_directions": product_directions,
+    }
+
+
+def _run_sync_script(module: str, job: dict) -> int:
+    """跑同步脚本并返回真实退出码；同时捕获脚本打印的 SYNC_RESULT 结构化结果。"""
+    try:
+        proc = subprocess.Popen(
+            [sys.executable, "-m", module],
+            cwd=str(BASE_DIR),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        assert proc.stdout is not None
+        for raw in proc.stdout:
+            with _SYNC_LOCK:
+                job["log"] += raw
+                if raw.startswith("SYNC_RESULT "):
+                    try:
+                        job["result"] = json.loads(raw[len("SYNC_RESULT "):].strip())
+                    except (ValueError, TypeError):
+                        pass
+        try:
+            proc.wait(timeout=900)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+            with _SYNC_LOCK:
+                job["log"] += "\n[ERROR] 脚本运行超时（>15min）已被终止\n"
+            return 1
+        return int(proc.returncode or 0)
+    except Exception as exc:  # noqa: BLE001
+        with _SYNC_LOCK:
+            job["log"] += f"\n[ERROR] {exc}\n"
+        return 1
+
+
+def _sync_worker(job_id: str) -> None:
+    job = SYNC_JOBS.get(job_id)
+    if not job:
+        return
+    with _SYNC_LOCK:
+        job["log"] = "▶ 开始同步：大华云商公开产品 / 方案清单 / 配单（匿名游客接口，真实增量）\n"
+    if not netcheck.mall_reachable(force=True):
+        with _SYNC_LOCK:
+            job["log"] += (
+                "✗ 当前无网络连接：同步需要访问大华云商公开接口，已跳过，未发起任何重试。\n"
+                "本地知识库数据未受影响；产品查询、智能问答、竞品对比、拓扑图与 Word 导出"
+                "均可继续离线使用。\n"
+                "恢复联网后再点一次「同步最新大华产品与方案」即可。\n"
+            )
+            job["status"] = "failed"
+            job["exit_code"] = -1
+            job["stats"] = _kb_stats()
+            job["result"] = {"ok": False, "error": "离线：无法连接 mall.dahuatech.com"}
+        return
+    code = _run_sync_script("scraper.sync_latest", job)
+    with _SYNC_LOCK:
+        result = job.get("result") or {}
+        job["exit_code"] = code
+        job["stats"] = _kb_stats()
+        ok = code == 0 and bool(result.get("ok"))
+        job["status"] = "done" if ok else "failed"
+        if ok:
+            job["log"] += "\n✔ 同步成功（数据已真实写入本地知识库）\n"
+        else:
+            job["log"] += ("\n✗ 同步失败：脚本返回非 0 或结果异常。"
+                           "数据库在写入前已自动备份，请查看上方错误原因。\n")
+
+
+# ---------------------------------------------------------------------------
+# RAG：混合检索 + 来源标注反幻觉（对应《华为云方案助手融入改造清单》Step 1~3）
+# ---------------------------------------------------------------------------
+@app.get("/rag", include_in_schema=False)
+def rag_page() -> FileResponse:
+    return FileResponse(WEB_DIR / "rag.html")
+
+
+@app.get("/api/rag/status")
+def rag_status() -> dict:
+    """索引规模、各子集数量、当前生成引擎（有 Key / 零 Key 降级）。"""
+    return rag_service.status()
+
+
+@app.post("/api/rag/reindex")
+def rag_reindex() -> dict:
+    """数据库更新后重建内存索引（服务内部也会按 DB mtime 自动重建）。"""
+    return rag_service.reindex()
+
+
+@app.post("/api/rag/ask")
+def rag_ask(req: RagRequest) -> dict:
+    """提问 → 混合检索 → 带 [资料N] 的回答 + 可点击来源卡片。"""
+    if not req.query.strip():
+        raise HTTPException(status_code=400, detail={"message": "问题不能为空"})
+    return rag_service.ask(
+        query=req.query,
+        mode=req.mode,
+        industry=req.industry,
+        top_k=max(1, min(req.top_k, 20)),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Agent 工作台（P1）：LangGraph 只承担 checkpoint / human-in-loop / 条件回边，
+# 计算与选型仍由 app.builder / app.calc 确定性执行。
+# ---------------------------------------------------------------------------
+
+@app.get("/agent", include_in_schema=False)
+def agent_page() -> FileResponse:
+    return FileResponse(WEB_DIR / "agent.html")
+
+
+@app.get("/api/agent/status")
+def api_agent_status() -> dict:
+    """当前需求解析引擎 + 工具核实层状态（断网自动降级，流程不受影响）。"""
+    return {"ok": True, **agent_parser_status(), "tools": agent_tools_status()}
+
+
+@app.post("/api/agent/start")
+def api_agent_start(req: AgentStartRequest) -> dict:
+    try:
+        return agent_service.start(
+            req.text, name=req.name, lanes=req.lanes,
+            retention_days=req.retention_days,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail={"message": str(exc)}) from exc
+
+
+@app.get("/api/agent/{thread_id}/state")
+def api_agent_state(thread_id: str) -> dict:
+    try:
+        return agent_service.state_of(thread_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail={"message": "会话不存在或已过期"}) from exc
+
+
+@app.post("/api/agent/{thread_id}/resume")
+def api_agent_resume(thread_id: str, req: AgentResumeRequest) -> dict:
+    try:
+        return agent_service.resume(thread_id, req.answer)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail={"message": "会话不存在或已结束"}) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail={"message": str(exc)}) from exc
+
+
+@app.get("/kb", include_in_schema=False)
+def kb_page() -> FileResponse:
+    return FileResponse(WEB_DIR / "kb.html")
+
+
+@app.get("/api/kb/stats")
+def kb_stats() -> dict:
+    return _kb_stats()
+
+
+def _kb_query(sql: str, params: list = None) -> list[dict]:
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.row_factory = sqlite3.Row
+    try:
+        return [dict(r) for r in conn.execute(sql, params or []).fetchall()]
+    finally:
+        conn.close()
+
+
+@app.get("/api/kb/products")
+def kb_products(q: str = "", class_name: str = "", offset: int = 0, limit: int = 24) -> dict:
+    """列出知识库真实产品（带图片与详情），支持关键词 / 类目筛选与分页。"""
+    limit = max(1, min(limit, 60))
+    offset = max(0, offset)
+    where, params = [], []
+    if q:
+        where.append("(model LIKE ? OR display_name LIKE ? OR part_num LIKE ? OR class_name LIKE ?)")
+        params += [f"%{q}%", f"%{q}%", f"%{q}%", f"%{q}%"]
+    if class_name:
+        where.append("class_name = ?")
+        params.append(class_name)
+    where_sql = (" WHERE " + " AND ".join(where)) if where else ""
+    base = (
+        "SELECT model, display_name, price_stand, class_name, "
+        "COALESCE(img_local, img_url) AS img_url, part_num, "
+        "direction, year_new, pi_status, pi_sysj, prod_id, prod_desc, spec_value, "
+        "source, source_url "
+        f"FROM products{where_sql} ORDER BY class_name, model LIMIT ? OFFSET ?"
+    )
+    rows = _kb_query(base, params + [limit, offset])
+    total = _kb_query(
+        f"SELECT COUNT(*) AS c FROM products{where_sql}", params
+    )[0]["c"]
+    return {"items": rows, "total": total, "offset": offset, "limit": limit}
+
+
+@app.get("/api/kb/categories")
+def kb_categories() -> dict:
+    """产品类目树：返回每个 class_name 的产品数量。"""
+    rows = _kb_query(
+        "SELECT class_name AS name, COUNT(*) AS c FROM products "
+        "GROUP BY class_name ORDER BY c DESC"
+    )
+    return {"items": rows, "total": sum(r["c"] for r in rows)}
+
+
+@app.get("/api/kb/solutions")
+def kb_solutions(q: str = "", limit: int = 200) -> dict:
+    """解决方案 = 官网方案 + 云商配单（已幂等补齐为 53 条）。"""
+    limit = max(1, min(limit, 300))
+    where, params = "", []
+    if q:
+        where = " WHERE (s.name LIKE ? OR s.scene_name LIKE ? OR b.industry LIKE ?)"
+        params = [f"%{q}%"] * 3
+    rows = _kb_query(
+        "SELECT s.sol_id, s.name, COALESCE(s.scene_name,'') AS scene_name, "
+        "COALESCE(s.img_local, s.detail_img) AS detail_img, "
+        "COALESCE(s.release_time,'') AS release_time, "
+        "COALESCE(s.summary,'') AS summary, s.collected_at, "
+        "(SELECT COUNT(*) FROM bom_items i WHERE i.scheme_id=s.sol_id) AS item_count, "
+        "CASE WHEN b.scheme_id IS NULL THEN '官网方案' ELSE '云商官方配单' END AS source, "
+        "COALESCE(b.industry, s.scene_name, '') AS industry "
+        "FROM solutions s LEFT JOIN boms b ON b.scheme_id=s.sol_id"
+        + where +
+        " ORDER BY item_count DESC, s.release_time DESC, s.name LIMIT ?",
+        params + [limit],
+    )
+    total = _kb_query(
+        "SELECT COUNT(*) AS c FROM solutions s LEFT JOIN boms b ON b.scheme_id=s.sol_id" + where,
+        params,
+    )[0]["c"]
+    return {"items": rows, "total": total}
+
+
+@app.get("/api/kb/solutions/{sol_id}/items")
+def kb_solution_items(sol_id: str) -> dict:
+    """某方案的云商配单明细（点击方案卡片展开）。"""
+    rows = _kb_query(
+        "SELECT seq, category, product_name, model, spec, unit, qty, unit_price, "
+        "amount, price_basis, match_type, remark FROM bom_items "
+        "WHERE scheme_id=? ORDER BY seq LIMIT 200",
+        [sol_id],
+    )
+    total = _kb_query("SELECT COUNT(*) AS c FROM bom_items WHERE scheme_id=?", [sol_id])[0]["c"]
+    return {
+        "items": rows, "total": total,
+        "note": "云商选型池：同一分类下多个型号为可替换候选，不是累加采购清单，总价不可直接相加。",
+    }
+
+
+@app.get("/api/kb/solutions/{sol_id}")
+def kb_solution_detail(sol_id: str) -> dict:
+    """方案详情页四块：方案详情 / 方案配单 / 相关资料 / 相关内容。
+
+    - 方案详情：名称、场景、发布时间、摘要与云商原站详情 HTML（含图文）。
+    - 方案配单：本方案的 bom_items（云商选型池，候选可替换）。
+    - 相关资料：配单涉及型号在大华产品库的规格 / 图片 / 价格（型号不在产品目录时用配单原文兜底）。
+    - 相关内容：同一 scene_name 下的其它方案。
+    严格不暴露 view_count（观看数），符合知识库展示口径。
+    """
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.row_factory = sqlite3.Row
+    try:
+        row = conn.execute(
+            "SELECT sol_id, name, scene_name, detail_img, release_time, summary, "
+            "img_local, raw_json FROM solutions WHERE sol_id=?", [sol_id]
+        ).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail={"message": "方案不存在"})
+        row = dict(row)
+
+        raw: dict = {}
+        try:
+            raw = json.loads(row.get("raw_json") or "{}")
+        except (ValueError, TypeError):
+            raw = {}
+        detail = raw.get("detail") or {}
+        list_item = raw.get("list_item") or {}
+        cover = row.get("img_local") or row.get("detail_img") or ""
+        sol = {
+            "sol_id": row["sol_id"],
+            "name": row["name"],
+            "scene_name": row.get("scene_name") or "",
+            "release_time": row.get("release_time") or "",
+            "summary": row.get("summary") or list_item.get("scheDescribe") or "",
+            "cover": cover,
+            "detail_html": detail.get("detail") or "",
+            "tags": [t.get("tagName") for t in (detail.get("planTags") or [])
+                     if t.get("tagName")],
+            "video_url": detail.get("tencentFileUrl") or detail.get("huaweiCloudUrl") or "",
+            "source": "大华云商公开方案",
+        }
+
+        bom_rows = conn.execute(
+            "SELECT seq, category, product_name, model, spec, unit, qty, unit_price, "
+            "amount, price_basis, match_type, remark FROM bom_items "
+            "WHERE scheme_id=? ORDER BY seq LIMIT 200", [sol_id]
+        ).fetchall()
+        bom = {
+            "items": [dict(r) for r in bom_rows],
+            "total": len(bom_rows),
+            "note": "云商选型池：同一分类下多个型号为可替换候选，不是累加采购清单，总价不可直接相加。",
+        }
+
+        # 相关资料：配单涉及型号 → 产品库规格 / 图片 / 价格
+        models, seen = [], set()
+        for r in bom_rows:
+            m = r["model"]
+            if m and m not in seen:
+                seen.add(m)
+                models.append(m)
+        materials = []
+        for m in models:
+            p = conn.execute(
+                "SELECT model, display_name, price_stand, class_name, "
+                "COALESCE(img_local, img_url) AS img, spec_value, prod_desc, source_url "
+                "FROM products WHERE model=?", [m]
+            ).fetchone()
+            if p:
+                p = dict(p)
+                materials.append({
+                    "model": p["model"],
+                    "product_name": p["display_name"] or p["model"],
+                    "img": p["img"] or "",
+                    "price": p["price_stand"],
+                    "spec": p["spec_value"] or "",
+                    "prod_desc": (p["prod_desc"] or "")[:240],
+                    "url": p["source_url"] or "",
+                    "class_name": p["class_name"] or "",
+                })
+            else:
+                bi = next((x for x in bom_rows if x["model"] == m), None)
+                if bi:
+                    materials.append({
+                        "model": m,
+                        "product_name": bi["product_name"],
+                        "img": "",
+                        "price": bi["unit_price"],
+                        "spec": bi["spec"] or "",
+                        "prod_desc": "",
+                        "url": "",
+                        "class_name": bi["category"] or "",
+                    })
+
+        # 相关内容：同场景其它方案
+        related = []
+        if row.get("scene_name"):
+            rel = conn.execute(
+                "SELECT s.sol_id, s.name, COALESCE(s.scene_name,'') AS scene_name, "
+                "COALESCE(s.img_local, s.detail_img) AS detail_img, "
+                "(SELECT COUNT(*) FROM bom_items i WHERE i.scheme_id=s.sol_id) AS item_count, "
+                "CASE WHEN b.scheme_id IS NULL THEN '官网方案' ELSE '云商官方配单' END AS source "
+                "FROM solutions s LEFT JOIN boms b ON b.scheme_id=s.sol_id "
+                "WHERE s.scene_name=? AND s.sol_id!=? ORDER BY item_count DESC LIMIT 6",
+                [row["scene_name"], sol_id],
+            ).fetchall()
+            related = [dict(r) for r in rel]
+    finally:
+        conn.close()
+    return {"solution": sol, "bom": bom, "materials": materials, "related": related}
+
+
+@app.get("/kb/solution/{sol_id}", include_in_schema=False)
+def solution_page(sol_id: str) -> FileResponse:
+    return FileResponse(WEB_DIR / "solution.html")
+
+
+@app.get("/api/kb/cases")
+def kb_cases() -> dict:
+    """行业案例来自项目最初抓取的大华官网案例页，明确标注抓取时间，不冒充 AI 总结。"""
+    rows = _kb_query(
+        "SELECT id, industry, title, url, content_len, fetched_at, page_kind, "
+        "'大华官网案例页' AS source_name FROM pages "
+        "ORDER BY fetched_at DESC, content_len DESC"
+    )
+    times = [r["fetched_at"] for r in rows if r.get("fetched_at")]
+    return {
+        "items": rows, "total": len(rows),
+        "source_note": "官网案例详情页原文抓取（非 AI 总结、非最新行业研究）",
+        "fetched_at": max(times) if times else "",
+        "fetched_from": min(times) if times else "",
+    }
+
+
+@app.get("/api/kb/competitors")
+def kb_competitors(brand: str = "", category: str = "", limit: int = 60) -> dict:
+    """竞品按【机型】聚合展示（补采后海康有 117 款，上限放到 500 防截断）。"""
+    limit = max(1, min(limit, 500))
+    where, params = [], []
+    if brand:
+        where.append("brand = ?")
+        params.append(brand)
+    if category:
+        where.append("category = ?")
+        params.append(category)
+    where_sql = (" WHERE " + " AND ".join(where)) if where else ""
+    rows = _kb_query(
+        "SELECT brand, category, model, MAX(display_name) AS display_name, "
+        "COUNT(*) AS fact_count, MIN(source_url) AS source_url, "
+        "MAX(retrieved_at) AS retrieved_at "
+        f"FROM competitor_facts{where_sql} GROUP BY brand, category, model "
+        "ORDER BY CASE WHEN brand='海康' THEN 0 ELSE 1 END, category, model LIMIT ?",
+        params + [limit],
+    )
+    brands = _kb_query(
+        "SELECT brand, COUNT(DISTINCT model) AS models, COUNT(*) AS facts "
+        "FROM competitor_facts GROUP BY brand ORDER BY models DESC"
+    )
+    total = _kb_query(
+        f"SELECT COUNT(*) AS c FROM (SELECT 1 FROM competitor_facts{where_sql} "
+        "GROUP BY brand, category, model)", params
+    )[0]["c"]
+    return {"items": rows, "brands": brands, "total": total,
+            "note": "统计卡中的『竞品对比』数字是官网参数事实条数，不是产品款数。"}
+
+
+@app.get("/api/kb/competitors/facts")
+def kb_competitor_facts(
+    brand: str = "", category: str = "", model: str = "", q: str = "",
+    offset: int = 0, limit: int = 40,
+) -> dict:
+    """逐条开放竞品参数事实（358 条），可按品牌 / 类目 / 机型 / 关键字筛选。
+
+    之前页面只显示"共 358 条"这个数字，用户看不到具体内容；这里把每一条
+    官网参数原文 + 来源链接开放出来，海康优先排序。
+    """
+    limit = max(1, min(limit, 200))
+    offset = max(0, offset)
+    where, params = [], []
+    for col, val in (("brand", brand), ("category", category), ("model", model)):
+        if val:
+            where.append(f"{col} = ?")
+            params.append(val)
+    if q:
+        where.append("(field_label LIKE ? OR raw_value LIKE ? OR model LIKE ? OR section LIKE ?)")
+        params += [f"%{q}%"] * 4
+    where_sql = (" WHERE " + " AND ".join(where)) if where else ""
+
+    rows = _kb_query(
+        "SELECT id, brand, category, model, display_name, section, field_label, "
+        "raw_value, source_url, retrieved_at, page_kind "
+        f"FROM competitor_facts{where_sql} "
+        "ORDER BY CASE WHEN brand='海康' THEN 0 ELSE 1 END, category, model, id "
+        "LIMIT ? OFFSET ?",
+        params + [limit, offset],
+    )
+    total = _kb_query(
+        f"SELECT COUNT(*) AS c FROM competitor_facts{where_sql}", params
+    )[0]["c"]
+    brands = _kb_query(
+        "SELECT brand, COUNT(*) AS c FROM competitor_facts GROUP BY brand ORDER BY c DESC"
+    )
+    cats = _kb_query(
+        "SELECT category, COUNT(*) AS c FROM competitor_facts GROUP BY category ORDER BY c DESC"
+    )
+    models = _kb_query(
+        "SELECT brand, model, category, COUNT(*) AS c FROM competitor_facts "
+        "GROUP BY brand, model, category ORDER BY CASE WHEN brand='海康' THEN 0 ELSE 1 END, model"
+    )
+    return {
+        "items": rows, "total": total, "offset": offset, "limit": limit,
+        "filters": {"brands": brands, "categories": cats, "models": models},
+        "note": "每一行为一个官网参数字段值；型号来自官网参数页，缺项未收录，不推断、不补数。",
+    }
+
+
+@app.post("/api/kb/sync")
+def kb_sync_start() -> dict:
+    job_id = uuid.uuid4().hex
+    with _SYNC_LOCK:
+        SYNC_JOBS[job_id] = {"status": "running", "log": "", "stats": None,
+                             "result": None, "exit_code": None}
+    threading.Thread(target=_sync_worker, args=(job_id,), daemon=True).start()
+    return {"job_id": job_id}
+
+
+@app.get("/api/kb/sync/{job_id}")
+def kb_sync_status(job_id: str) -> dict:
+    job = SYNC_JOBS.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail={"message": "同步任务不存在", "gaps": []})
+    return {"status": job["status"], "log": job["log"], "stats": job["stats"],
+            "result": job.get("result"), "exit_code": job.get("exit_code")}
+
+
+def _safe_name(name: str) -> str:
+    cleaned = re.sub(r'[\\/:*?"<>|\s]+', "_", name).strip("_")
+    return cleaned or "未命名方案"

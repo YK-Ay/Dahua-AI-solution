@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>方案详情 · 大华解决方案助手</title>
+  <link rel="stylesheet" href="/static/styles.css?v=20261107-2000">
+  <style>[hidden]{display:none!important}</style>
+</head>
+<body>
+  <header class="topnav">
+    <div class="nav-brand">
+      <span class="brand-mark">DH</span>
+      <span class="brand-name">大华解决方案助手<small>DAHUA SOLUTION DESK</small></span>
+    </div>
+    <nav class="nav-links">
+      <a href="/agent">Agent 工作台</a>
+      <a href="/kb" class="active">知识库</a>
+      <a href="/rag">智能问答</a>
+      <a href="/compare">竞品对比</a>
+    </nav>
+    <div class="nav-status"><span class="dot"></span>本地知识库 · 可同步</div>
+  </header>
+
+  <main class="sol-detail" id="sol-detail">
+    <a class="back-link" href="/kb">← 返回知识库</a>
+
+    <div class="sol-hero" id="sol-hero">
+      <div class="sol-cover"><img id="sol-cover" src="" alt="方案封面"></div>
+      <div class="sol-info">
+        <span class="eyebrow" id="sol-scene"></span>
+        <h1 id="sol-name">加载中…</h1>
+        <div class="sol-meta" id="sol-meta"></div>
+        <div class="sol-tags" id="sol-tags"></div>
+        <div class="sol-video" id="sol-video" hidden></div>
+      </div>
+    </div>
+
+    <nav class="sol-tabs" id="sol-tabs">
+      <button class="sol-tab active" data-tab="detail">方案详情</button>
+      <button class="sol-tab" data-tab="bom">方案配单</button>
+      <button class="sol-tab" data-tab="materials">相关资料</button>
+      <button class="sol-tab" data-tab="related">相关内容</button>
+    </nav>
+
+    <section class="sol-section" id="sec-detail">
+      <div class="sol-summary" id="sol-summary"></div>
+      <div class="sol-rich" id="sol-rich"></div>
+    </section>
+
+    <section class="sol-section" id="sec-bom" hidden>
+      <div class="sec-head"><h3>方案配单</h3><span class="muted" id="bom-count"></span></div>
+      <div class="kb-meta-line" id="bom-note"></div>
+      <div class="facts-table-wrap" id="bom-wrap">
+        <table>
+          <thead><tr><th>分类</th><th>产品</th><th>型号</th><th>规格</th><th class="num">数量</th><th class="num">单价</th><th>价格口径</th></tr></thead>
+          <tbody id="bom-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="sol-section" id="sec-materials" hidden>
+      <div class="sec-head"><h3>相关资料</h3><span class="muted">本方案配单涉及的设备资料（规格 / 图片 / 价格）</span></div>
+      <div class="kb-grid" id="materials-grid"></div>
+    </section>
+
+    <section class="sol-section" id="sec-related" hidden>
+      <div class="sec-head"><h3>相关内容</h3><span class="muted" id="related-sub"></span></div>
+      <div class="kb-grid" id="related-grid"></div>
+    </section>
+
+    <div class="kb-empty" id="sol-error" hidden></div>
+  </main>
+
+  <script src="/static/solution.js?v=20261107-2000"></script>
+</body>
+</html>

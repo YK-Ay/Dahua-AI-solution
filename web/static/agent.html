@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Agent 工作台 · 大华解决方案助手</title>
+  <link rel="stylesheet" href="/static/styles.css?v=20261106-2100">
+  <style>
+    [hidden]{display:none!important}
+    .run-meta { display:flex; gap:18px; flex-wrap:wrap; font-size:12.5px; color:var(--muted); margin-bottom:12px; }
+    .run-meta b { color:var(--ink); font-family:var(--mono); }
+    .engine-badge { display:inline-block; padding:3px 10px; border-radius:999px; font-size:11.5px;
+      background:var(--red-soft); color:var(--red-dark); border:1px solid var(--line-strong); }
+    .engine-badge.offline { background:var(--bg-2); color:var(--muted); border-color:var(--line); }
+    .spec-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; margin:12px 0 16px; }
+    .spec-cell { background:var(--bg-2); border:1px solid var(--line); border-radius:8px; padding:10px 12px; }
+    .spec-cell .k { font-size:11px; color:var(--muted); }
+    .spec-cell .v { font-size:14px; font-weight:700; color:var(--ink); margin-top:3px; }
+    .gap-list { margin:0 0 12px; padding-left:20px; font-size:13px; line-height:1.8; color:var(--ink-2); }
+    .gap-origin { font-size:11.5px; color:var(--muted); line-height:1.6; margin-top:2px; }
+    .gap-list li { margin-bottom:8px; }
+    .agent-section { margin-top:16px; padding:14px 16px; border:1px solid var(--line);
+      border-radius:var(--radius); background:#fff; }
+    .agent-section h3 { margin:0 0 10px; font-size:15px; font-weight:800; }
+    .agent-section textarea { width:100%; margin:8px 0 12px; }
+    .agent-actions { display:flex; gap:10px; flex-wrap:wrap; }
+    .topo-preview { max-width:100%; border:1px solid var(--line); border-radius:var(--radius-sm);
+      background:var(--bg-2); margin:6px 0 14px; }
+    .mini-table { width:100%; border-collapse:collapse; font-size:12.5px; margin:8px 0 14px; }
+    .mini-table th, .mini-table td { padding:7px 9px; border-bottom:1px solid var(--line); text-align:left; }
+    .mini-table th { color:var(--muted); font-weight:700; background:var(--bg-2); }
+    .flow-note { font-size:11.5px; color:var(--muted); line-height:1.7; margin-top:10px; }
+    .tool-list { margin:6px 0 0; padding-left:18px; font-size:12.5px; line-height:1.9; color:var(--ink-2); }
+    .tool-list b { font-family:var(--mono); font-size:12px; }
+    .tool-args { font-family:var(--mono); font-size:11.5px; color:var(--muted); }
+    .tool-bad { color:var(--red-dark); }
+  </style>
+</head>
+<body>
+  <header class="topnav">
+    <div class="nav-brand">
+      <span class="brand-mark">DH</span>
+      <span class="brand-name">大华解决方案助手<small>DAHUA SOLUTION DESK</small></span>
+    </div>
+    <nav class="nav-links">
+      <a href="/agent" class="active">Agent 工作台</a>
+      <a href="/kb">知识库</a>
+      <a href="/rag">智能问答</a>
+      <a href="/compare">竞品对比</a>
+    </nav>
+    <div class="nav-status"><span class="dot"></span>LangGraph · 断点续跑</div>
+    <button class="tut-btn" id="btn-tutorial" title="使用教程">? 使用教程</button>
+  </header>
+
+  <main class="workbench">
+    <section class="hero">
+      <div class="hero-text">
+        <span class="eyebrow">AGENT WORKFLOW · HUMAN IN THE LOOP</span>
+        <h1>会停下来<span class="hl">等你确认</span>的方案 Agent</h1>
+        <p>描述需求 → 自动选型与测算 → 人工确认 → 生成拓扑图与 Word 方案。会话自动落盘，可随时续跑。</p>
+      </div>
+      <nav class="steps" id="agent-steps" aria-label="Agent 流程">
+        <button class="step active" data-step="1"><i>01</i><span>需求解析</span></button>
+        <button class="step" data-step="2"><i>02</i><span>构建 Spec</span></button>
+        <button class="step" data-step="3"><i>03</i><span>硬闸门校验</span></button>
+        <button class="step" data-step="4"><i>04</i><span>人工审阅</span></button>
+        <button class="step" data-step="5"><i>05</i><span>导出交付物</span></button>
+      </nav>
+    </section>
+
+    <section class="card" id="input-card">
+      <div class="card-head flex">
+        <div>
+          <span class="eyebrow">Step 01 — Requirement</span>
+          <h2>描述客户需求</h2>
+          <p>大模型只理解场景、不编数字；型号、存储、带宽均由本地确定性算法核算，断网也能跑。</p>
+        </div>
+        <span class="engine-badge" id="engine-badge">正在检测引擎…</span>
+      </div>
+      <div class="card-body">
+        <div class="field">
+          <label for="demand">需求描述</label>
+          <textarea id="demand" rows="5" placeholder="例如：某智慧园区，周界80路、出入口20路，存储30天"></textarea>
+        </div>
+        <div class="grid-3">
+          <label class="field"><span>项目名（可选）</span><input id="in-name" type="text" placeholder="留空自动命名"></label>
+          <label class="field"><span>总路数（可选）</span><input id="in-lanes" type="number" min="1" placeholder="留空从原文识别"></label>
+          <label class="field"><span>存储天数（可选）</span><input id="in-days" type="number" min="1" placeholder="留空从原文识别"></label>
+        </div>
+        <div class="tpl-row">
+          <span class="tpl-label">快速体验模板：</span>
+          <button class="tpl-chip" data-tpl="0">智慧园区 · 周界/电梯</button>
+          <button class="tpl-chip" data-tpl="1">智慧校园 · 教学楼/宿舍</button>
+          <button class="tpl-chip" data-tpl="2">办公楼宇 · 谈话/周界</button>
+          <button class="tpl-chip" data-tpl="3">商业综合体 · 停车场</button>
+        </div>
+        <div class="hint-row">
+          <span>会话会落盘到本地 checkpoint，刷新页面或重启服务都能接着跑</span>
+          <button class="link" id="btn-demo">填入示例</button>
+        </div>
+        <div class="agent-actions" style="margin-top:14px">
+          <button class="btn primary" id="btn-start">启动 Agent</button>
+          <button class="btn ghost" id="btn-restore">恢复上次会话</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="card" id="run-card" hidden>
+      <div class="card-head">
+        <span class="eyebrow">Agent Run</span>
+        <h2>运行状态与审阅</h2>
+      </div>
+      <div class="card-body">
+        <div class="run-meta">
+          <span>会话 <b id="tid">—</b></span>
+          <span>状态 <b id="run-status">—</b></span>
+          <span>回问轮次 <b id="rounds">0</b></span>
+        </div>
+        <div class="kb-note" id="parser-note"></div>
+        <div class="kb-note" id="research-note" hidden></div>
+        <div class="alert" id="alert" hidden></div>
+
+        <div class="agent-section" id="gap-panel" hidden>
+          <h3>需要补充信息</h3>
+          <div class="muted" style="font-size:12.5px">硬闸门拦截了方案缺口，补充后会自动回到构建节点重算。
+            <span id="gap-engine"></span></div>
+          <ul class="gap-list" id="gap-list"></ul>
+          <textarea id="gap-input" rows="3" placeholder="例如：主干道 15 路，存储 45 天"></textarea>
+          <div class="agent-actions">
+            <button class="btn primary" id="btn-gap">提交补充并继续</button>
+          </div>
+        </div>
+
+        <div class="agent-section" id="review-panel" hidden>
+          <h3>Spec 审阅</h3>
+          <div id="spec-summary"></div>
+          <div class="grid-3">
+            <label class="field"><span>总路数</span><input id="ed-lanes" type="number" min="1"></label>
+            <label class="field"><span>存储天数</span><input id="ed-days" type="number" min="1"></label>
+            <label class="field"><span>项目名</span><input id="ed-name" type="text"></label>
+          </div>
+          <div class="field" style="margin-top:10px">
+            <label for="review-feedback">其他修改意见（可选）</label>
+            <textarea id="review-feedback" rows="2" placeholder="例如：增加停车场 10 路"></textarea>
+          </div>
+          <div class="agent-actions">
+            <button class="btn primary" id="btn-approve">通过并生成</button>
+            <button class="btn ghost" id="btn-revise">按修改重新计算</button>
+          </div>
+          <div class="flow-note">改数字会写回 Agent 状态并触发条件回边重新调用确定性计算，不会靠大模型猜数。</div>
+        </div>
+
+        <div class="agent-section" id="done-panel" hidden>
+          <h3>交付物已生成</h3>
+          <div class="topo-switch">
+            <button class="topo-mode active" data-mode="simple">简略拓扑</button>
+            <button class="topo-mode" data-mode="detailed">详细连线</button>
+          </div>
+          <div class="topo-host" id="topo-host"></div>
+          <div class="agent-actions">
+            <a class="btn primary" id="dl-docx" href="#">下载 Word 方案</a>
+            <a class="btn ghost" id="dl-png" href="#">下载简略图</a>
+            <a class="btn ghost" id="dl-png-detail" href="#">下载详细图</a>
+            <button class="btn ghost" id="dl-png-svg">导出当前图 PNG</button>
+            <button class="btn ghost" id="btn-new">再做一个</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <p class="flow-note">
+      LangGraph 只承担三件事：checkpoint 断点续跑、human-in-loop 中断、校验失败条件回边。
+      存储/带宽由 <span class="mono">app/calc.py</span> 确定性计算，型号来自本地产品库，不由模型编造。
+    </p>
+  </main>
+
+  <!-- 使用教程弹窗 -->
+  <div class="modal-mask" id="tut-mask" hidden>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-label="使用教程">
+      <div class="modal-head">
+        <h3>使用教程</h3>
+        <button class="modal-x" id="tut-close" aria-label="关闭">×</button>
+      </div>
+      <div class="modal-body">
+        <ol class="tut-steps">
+          <li><b>选模板或自己写</b>：点击上方的「快速体验模板」一键填入典型需求；也可在文本框自由描述（如"周界80路、电梯20路、存储30天"）。</li>
+          <li><b>启动 Agent</b>：点「启动 Agent」。系统先解析需求、自动选型、确定性测算存储/带宽。</li>
+          <li><b>补信息 / 审阅</b>：信息不足会回问，按提示补充即可；方案出来后在审阅页改数字或写意见，会重新计算。</li>
+          <li><b>看拓扑图</b>：通过后默认看「简略拓扑」，点「详细连线」可切换到全配单互连图，看清每类设备用在哪、怎么连。</li>
+          <li><b>导出</b>：可下载 Word 方案、简略图、详细图，或点「导出当前图 PNG」保存正在看的那张。</li>
+        </ol>
+        <p class="tut-note">提示：会话会落盘，刷新或重启服务都能接着跑；断网也能用（自动降级本地规则）。</p>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/topology.js?v=20261106-2100"></script>
+  <script src="/static/agent.js?v=20261106-2100"></script>
+</body>
+</html>
