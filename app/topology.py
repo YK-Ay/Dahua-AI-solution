@@ -100,9 +100,9 @@ def _cat_color(category: str) -> tuple[int, int, int]:
         return C_RECORDER
     if "硬盘" in category or "存储" in category:
         return C_DISK
-    if category == "监视器":
+    if category == "监视器" or "拼接屏" in category:
         return C_MONITOR
-    if "平台" in category:
+    if "平台" in category or "解码" in category:
         return C_PLATFORM
     return C_BOX
 
@@ -116,9 +116,9 @@ def _icon_type(category: str) -> str:
         return "recorder"
     if "硬盘" in category or "存储" in category:
         return "disk"
-    if category == "监视器":
+    if category == "监视器" or "拼接屏" in category:
         return "monitor"
-    if "平台" in category:
+    if "平台" in category or "解码" in category:
         return "platform"
     return "box"
 
@@ -232,7 +232,8 @@ def _layer_nodes(spec: Spec) -> dict[str, list[tuple[dict, bool]]]:
     front = [mk(d) for d in spec.devices if d.category == "网络摄像机"]
     trans = [mk(d) for d in spec.devices if d.category == "PoE交换机"]
     storage = [mk(d) for d in spec.devices if d.category in ("NVR", "通用存储录像机", "机械硬盘")]
-    display = [mk(d) for d in spec.devices if d.category == "监视器"]
+    display = [mk(d) for d in spec.devices
+               if d.category in ("监视器", "拼接屏", "拼接支架", "解码器")]
     plat = [mk(d) for d in spec.devices if "平台" in d.category]
     if not plat:
         plat = [({"category": "综合管理平台", "model": "P1 规划", "display_name": "待选型",
@@ -287,7 +288,7 @@ def _render_simple(spec: Spec, out_path: Path | str) -> Path:
     title = "系统拓扑图（简略）"
     tw = _text_w(draw, title, title_font)
     draw.text(((W - tw) / 2, 30), title, font=title_font, fill=INK)
-    sub = f"{spec.project.name} · {spec.project.industry} · 按 Spec 自动渲染"
+    sub = f"{spec.project.name} · {spec.project.industry}"
     sw = _text_w(draw, sub, sub_font)
     draw.text(((W - sw) / 2, 82), sub, font=sub_font, fill=MUTED)
     draw.line((MARGIN_X, 122, W - MARGIN_X, 122), fill=LINK, width=3)
@@ -325,9 +326,6 @@ def _render_simple(spec: Spec, out_path: Path | str) -> Path:
         if i < len(band_rects) - 1:
             next_top = band_rects[i + 1][0]
             _arrow_down(draw, area_x + area_w / 2, btop + bh + 4, next_top - 4)
-
-    note = "说明：设备型号/数量/使用地点来自 Spec；底部红色「地点：」条为该设备的使用地点，目标为摄像机建设意图。前端 → 传输 → 存储 → 平台 → 显示"
-    draw.text((MARGIN_X, H - 28), note, font=sub_font, fill=MUTED)
 
     img.save(out, "PNG")
     return out
@@ -390,7 +388,7 @@ def _render_detailed(spec: Spec, out_path: Path | str) -> Path:
     nvrs = [d for d in spec.devices if d.category in ("NVR", "通用存储录像机")]
     disks = [d for d in spec.devices if d.category == "机械硬盘"]
     platforms = [d for d in spec.devices if "平台" in d.category]
-    monitors = [d for d in spec.devices if d.category == "监视器"]
+    displays = [d for d in spec.devices if d.category in ("监视器", "拼接屏")]
 
     # 画布尺寸
     SCENE_W, SCENE_H, SCENE_GAP = 320, 96, 16
@@ -409,9 +407,10 @@ def _render_detailed(spec: Spec, out_path: Path | str) -> Path:
     if platforms:
         spine_defs.append(("综合管理平台", platforms[0].model, "统一管理与上墙",
                            sum(x.qty for x in platforms), C_PLATFORM))
-    if monitors:
-        spine_defs.append(("监视器", monitors[0].model, "监控中心显示",
-                           sum(x.qty for x in monitors), C_MONITOR))
+    if displays:
+        head = "监视器" if displays[0].category == "监视器" else "拼接电视墙"
+        spine_defs.append((head, displays[0].model, "监控中心上墙",
+                           sum(x.qty for x in displays), C_MONITOR))
     n_sp = len(spine_defs)
     spine_band_h = n_sp * SPINE_H + (n_sp - 1) * SPINE_GAP
 
@@ -507,7 +506,7 @@ def _render_detailed(spec: Spec, out_path: Path | str) -> Path:
     draw.text((M, ly), "连线含义：", font=_font(HEAD_FONT), fill=INK)
     legend = [
         "摄像机（按使用地点分组）→ 接入交换机（网线 / PoE）",
-        "交换机 → NVR（视频流汇聚与录像）→ 综合平台（统一管理）→ 监视器（上墙显示）",
+        "交换机 → NVR（视频流汇聚与录像）→ 综合平台（统一管理）→ 监视器 / 拼接电视墙（上墙显示）",
         "NVR → 监控硬盘（录像存储，按冗余系数折算块数）",
         "注：本图为逻辑连接示意；实际工程按点位就近接入交换机，并按区域 / 机柜位置部署。型号与数量来自选型结果。",
     ]

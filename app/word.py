@@ -227,15 +227,16 @@ def render_docx(spec: Spec, out_path: Path | str, topology_png: Path | str | Non
         total_cost += subtotal
         device_rows.append([
             idx, d.category, d.model, d.display_name or "—", d.qty,
-            f"{d.unit_price:,.2f}" if d.unit_price is not None else "—",
+            f"{d.unit_price:,.2f}" if d.unit_price is not None else "待询价",
             f"{subtotal:,.2f}" if d.unit_price is not None else "—",
+            d.reason or "—",
         ])
-    device_rows.append(["", "", "", "合计（标准价，未税/未折扣）", "", "", f"{total_cost:,.2f}"])
+    device_rows.append(["", "", "", "合计（标准价，未税/未折扣）", "", "", f"{total_cost:,.2f}", ""])
     _table(
         doc,
-        ["序号", "类别", "型号", "名称", "数量", "单价(元)", "小计(元)"],
+        ["序号", "类别", "型号", "名称", "数量", "单价(元)", "小计(元)", "选型依据"],
         device_rows,
-        [1.2, 2.4, 4.0, 5.0, 1.5, 2.0, 2.2],
+        [0.9, 2.0, 3.2, 3.6, 1.2, 1.7, 1.9, 4.2],
     )
 
     _heading(doc, "四、存储与带宽测算")

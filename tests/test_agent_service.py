@@ -67,6 +67,12 @@ class AgentServiceTest(unittest.TestCase):
         self.assertEqual(d["interrupt_type"], "review")
         self.assertIsNotNone(d["spec"])
         self.assertEqual(d["parser"]["engine"], "offline")
+        # 多 Agent 中间产物要透传到前端（Agent 执行过程面板）
+        self.assertEqual(d["stage"], "review")
+        self.assertEqual(d["intent"]["industry"], "智慧园区")
+        self.assertEqual(len(d["selection"]["scenes"]), len(d["intent"]["requirements"]))
+        self.assertEqual(d["bom"]["lanes_total"],
+                         sum(r["lanes"] for r in d["intent"]["requirements"]))
 
         tid = d["thread_id"]
         snap = S.state_of(tid)

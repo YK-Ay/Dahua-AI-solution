@@ -89,10 +89,11 @@
           fmt(r.lanes) + "</td><td>" + fmt(r.bitrate_mbps) + " Mbps</td></tr>";
       }).join("") + "</tbody></table>";
 
-    html += '<table class="mini-table"><thead><tr><th>类别</th><th>型号</th><th>数量</th><th>单价</th></tr></thead><tbody>' +
+    html += '<table class="mini-table"><thead><tr><th>类别</th><th>型号</th><th>数量</th><th>单价</th><th>选型依据</th></tr></thead><tbody>' +
       devs.map(function (d) {
         return "<tr><td>" + esc(d.category) + "</td><td>" + esc(d.model) + "</td><td>" +
-          fmt(d.qty) + "</td><td>" + (d.unit_price == null ? "—" : "¥" + fmt(d.unit_price)) + "</td></tr>";
+          fmt(d.qty) + "</td><td>" + (d.unit_price == null ? "待询价" : "¥" + fmt(d.unit_price)) +
+          '</td><td class="reason-cell">' + esc(d.reason || "—") + "</td></tr>";
       }).join("") + "</tbody></table>";
 
     var gaps = s.gaps || [];
@@ -168,6 +169,132 @@
     el.innerHTML = html;
   }
 
+  /* ---------- Agent 执行过程：意图识别 / 选型 / 配单 三个中间产物 ---------- */
+  var PIPE_STEPS = [
+    { name: "意图识别", done: function (d) { return !!d.intent; } },
+    { name: "选型", done: function (d) { return !!d.selection; } },
+    { name: "配单", done: function (d) { return !!d.bom; } },
+    { name: "方案", done: function (d) { return !!d.spec; } },
+    { name: "产物", done: function (d) { return !!(d.files && Object.keys(d.files).length); } },
+  ];
+
+  function reqTotal(intent) {
+    return ((intent || {}).requirements || []).reduce(function (a, r) {
+      return a + (Number(r.lanes) || 0);
+    }, 0);
+  }
+
+  function pipeStepsHtml(d) {
+    var current = -1;
+    var flags = PIPE_STEPS.map(function (s, i) {
+      var ok = s.done(d);
+      if (!ok && current < 0) current = i;
+      return ok;
+    });
+    var failed = d.stage === "gate" || d.status === "aborted";
+    var waiting = d.status === "awaiting_input" && d.interrupt_type === "review";
+    return PIPE_STEPS.map(function (s, i) {
+      var cls = "pipe-step";
+      var tag = "待执行";
+      if (flags[i]) { cls += " done"; tag = "已完成"; }
+      else if (i === current) {
+        cls += failed ? " fail" : " active";
+        tag = failed ? "待补充" : (waiting ? "待审阅" : "进行中");
+      }
+      return '<span class="' + cls + '"><i class="pipe-dot"></i>' + esc(s.name) +
+        " · " + tag + "</span>";
+    }).join("");
+  }
+
+  function intentHtml(intent) {
+    if (!intent) return '<div class="pipe-empty">尚未完成：等待意图识别 Agent 解析需求。</div>';
+    var reqs = intent.requirements || [];
+    var cells = [
+      ["行业", intent.industry || "—"],
+      ["总点位", reqTotal(intent) + " 路"],
+      ["存储", (intent.days || "—") + " 天"],
+      ["场景", reqs.length + " 类"],
+    ];
+    var html = '<div class="spec-grid">' + cells.map(function (c) {
+      return '<div class="spec-cell"><div class="k">' + esc(c[0]) + '</div><div class="v">' +
+        esc(c[1]) + "</div></div>";
+    }).join("") + "</div>";
+    html += '<table class="mini-table"><thead><tr><th>场景</th><th>建设目标</th>' +
+      "<th>点位数</th><th>码流</th></tr></thead><tbody>" +
+      reqs.map(function (r) {
+        return "<tr><td>" + esc(r.target) + "</td><td>" + esc(r.intent) + "</td><td>" +
+          fmt(r.lanes) + "</td><td>" + fmt(r.bitrate_mbps) + " Mbps</td></tr>";
+      }).join("") + "</tbody></table>";
+    if ((intent.assumptions || []).length) {
+      html += '<div class="muted" style="font-size:11.5px">假设：' +
+        esc(intent.assumptions.join("；")) + "</div>";
+    }
+    return html;
+  }
+
+  function selectionHtml(sel) {
+    if (!sel) return '<div class="pipe-empty">尚未完成：等待选型 Agent 检索真实配单与中标案例。</div>';
+    var scenes = sel.scenes || [];
+    var byScene = {};
+    (sel.devices || []).forEach(function (dv) { byScene[dv.scene] = dv; });
+    if (!scenes.length) return '<div class="pipe-empty">没有需要选型的场景。</div>';
+    return '<table class="mini-table"><thead><tr><th>场景</th><th>点位数</th>' +
+      "<th>选中型号</th><th>选型依据</th></tr></thead><tbody>" +
+      scenes.map(function (s) {
+        var dv = byScene[s.target] || {};
+        var desc = dv.display_name && dv.display_name !== s.model
+          ? '<div class="muted" style="font-size:11px">' + esc(dv.display_name) + "</div>" : "";
+        return "<tr><td>" + esc(s.target) + "</td><td>" + fmt(s.lanes) + "</td>" +
+          "<td>" + esc(s.model) + desc + "</td>" +
+          '<td class="reason-cell">' + esc(s.reason || "—") + "</td></tr>";
+      }).join("") + "</tbody></table>";
+  }
+
+  function bomHtml(bom) {
+    if (!bom) return '<div class="pipe-empty">尚未完成：等待配单 Agent 配齐 NVR、存储、传输与平台。</div>';
+    var devs = bom.devices || [];
+    var qty = devs.reduce(function (a, d) { return a + (Number(d.qty) || 0); }, 0);
+    var st = bom.storage || {};
+    var cells = [
+      ["设备", devs.length + " 类 / " + qty + " 台"],
+      ["总点位", fmt(bom.lanes_total) + " 路"],
+      ["裸容量", fmt(st.raw_tb) + " TB"],
+      ["冗余容量", fmt(st.with_redundancy_tb) + " TB"],
+      ["上行带宽", fmt(bom.bandwidth) + " Mbps"],
+    ];
+    var html = '<div class="spec-grid">' + cells.map(function (c) {
+      return '<div class="spec-cell"><div class="k">' + esc(c[0]) + '</div><div class="v">' +
+        esc(c[1]) + "</div></div>";
+    }).join("") + "</div>";
+    html += '<table class="mini-table"><thead><tr><th>类别</th><th>型号</th>' +
+      "<th>数量</th><th>配单依据</th></tr></thead><tbody>" +
+      devs.map(function (d) {
+        return "<tr><td>" + esc(d.category) + "</td><td>" + esc(d.model) + "</td><td>" +
+          fmt(d.qty) + '</td><td class="reason-cell">' + esc(d.reason || "—") + "</td></tr>";
+      }).join("") + "</tbody></table>";
+    return html;
+  }
+
+  function renderPipeline(d) {
+    var panel = $("pipeline-panel");
+    // 旧会话的 checkpoint 没有中间产物字段，隐藏而不是显示一堆「待执行」
+    if (!d.intent && !d.selection && !d.bom) {
+      panel.hidden = true;
+      return;
+    }
+    panel.hidden = false;
+    $("pipe-steps").innerHTML = pipeStepsHtml(d);
+    $("pipe-intent-note").textContent = d.intent
+      ? "· " + (d.intent.industry || "") + " · " + reqTotal(d.intent) + " 路" : "· 未完成";
+    $("pipe-selection-note").textContent = d.selection
+      ? "· " + (d.selection.scenes || []).length + " 个场景已定型" : "· 未完成";
+    $("pipe-bom-note").textContent = d.bom
+      ? "· " + (d.bom.devices || []).length + " 类设备" : "· 未完成";
+    $("pipe-intent-body").innerHTML = intentHtml(d.intent);
+    $("pipe-selection-body").innerHTML = selectionHtml(d.selection);
+    $("pipe-bom-body").innerHTML = bomHtml(d.bom);
+  }
+
   var STATUS_LABEL = {
     awaiting_input: "等待人工输入",
     done: "已完成",
@@ -209,10 +336,12 @@
     if (p.warnings && p.warnings.length) note += "<br>" + esc(p.warnings.join("；"));
     $("parser-note").innerHTML = note;
     renderResearch(d);
+    renderPipeline(d);
 
     $("gap-panel").hidden = true;
     $("review-panel").hidden = true;
     $("done-panel").hidden = true;
+    $("version-box").hidden = true;
     alertMsg("");
 
     if (d.status === "awaiting_input" && d.interrupt_type === "gap") {
@@ -253,6 +382,10 @@
       $("dl-png").href = png ? png.url : "#";
       $("dl-png-detail").href = (d.files && d.files.png_detail) ? d.files.png_detail.url : "#";
       $("dl-docx").href = docx ? docx.url : "#";
+      $("dl-pptx").href = (d.files && d.files.pptx) ? d.files.pptx.url : "#";
+      fillEditForm(d.spec);
+      loadQuote(d.thread_id);
+      loadVersions(d.thread_id);
     } else if (d.status === "aborted") {
       step(3);
       alertMsg("缺口回问超过上限，未生成半成品。缺口：" + (d.gaps || []).join("；"));
@@ -260,6 +393,7 @@
       step(2);
     }
     $("run-card").scrollIntoView({ behavior: "smooth", block: "start" });
+    if (!$("history-card").hidden) loadHistory();
   }
 
   async function start(btn) {
@@ -311,6 +445,231 @@
     if (window.DahuaTopology) DahuaTopology.render(host, st.spec, st.mode);
   }
 
+  /* ---------- 报价单 / 在线编辑 / PDF ---------- */
+  async function loadQuote(tid) {
+    var box = $("quote-box"), host = $("quote-table");
+    try {
+      var q = await api("/api/agent/" + encodeURIComponent(tid) + "/quote");
+      $("quote-total").textContent = "¥" + fmt(q.total);
+      host.innerHTML = '<table class="mini-table"><thead><tr><th>#</th><th>类别</th>' +
+        "<th>型号</th><th>数量</th><th>单价</th><th>小计</th></tr></thead><tbody>" +
+        (q.lines || []).map(function (l) {
+          return "<tr><td>" + l.index + "</td><td>" + esc(l.category) + "</td><td>" +
+            esc(l.model) + "</td><td>" + fmt(l.qty) + "</td><td>" +
+            (l.unit_price == null ? "待询价" : "¥" + fmt(l.unit_price)) + "</td><td>" +
+            (l.amount == null ? "—" : "¥" + fmt(l.amount)) + "</td></tr>";
+        }).join("") + "</tbody></table>";
+      $("quote-note").textContent = q.note +
+        (q.unpriced ? "（其中 " + q.unpriced + " 项缺标准价）" : "");
+      box.hidden = false;
+    } catch (e) {
+      box.hidden = true;
+    }
+  }
+
+  function fillEditForm(spec) {
+    if (!spec) return;
+    var reqs = spec.requirements || [];
+    $("op-lanes").value = reqs.reduce(function (a, r) { return a + (Number(r.lanes) || 0); }, 0);
+    $("op-days").value = (spec.storage && spec.storage.retention_days) || "";
+    $("op-name").value = (spec.project && spec.project.name) || "";
+    var devs = spec.devices || [];
+    $("edit-devices").innerHTML = devs.length
+      ? '<table class="mini-table"><thead><tr><th>#</th><th>类别</th><th>型号（可改）</th>' +
+        "<th>数量</th><th>单价</th></tr></thead><tbody>" +
+        devs.map(function (dv, i) {
+          return "<tr><td>" + (i + 1) + "</td><td>" + esc(dv.category) + "</td>" +
+            '<td><input data-f="model" data-i="' + i + '" value="' + esc(dv.model) + '"></td>' +
+            '<td><input data-f="qty" data-i="' + i + '" type="number" min="1" value="' +
+            (dv.qty || 0) + '"></td><td>' +
+            (dv.unit_price == null ? "—" : "¥" + fmt(dv.unit_price)) + "</td></tr>";
+        }).join("") + "</tbody></table>"
+      : '<div class="muted" style="font-size:12px">暂无设备</div>';
+  }
+
+  async function saveEdit(btn) {
+    var spec = st.spec || {};
+    var patch = {};
+    var reqs = spec.requirements || [];
+    var oldLanes = reqs.reduce(function (a, r) { return a + (Number(r.lanes) || 0); }, 0);
+    var oldDays = spec.storage && spec.storage.retention_days;
+    var oldName = spec.project && spec.project.name;
+
+    var lanes = intOr($("op-lanes").value);
+    var days = intOr($("op-days").value);
+    var name = $("op-name").value.trim();
+    if (lanes && lanes !== oldLanes) patch.lanes = lanes;
+    if (days && days !== oldDays) patch.retention_days = days;
+    if (name && name !== oldName) patch.name = name;
+
+    var changes = [];
+    (spec.devices || []).forEach(function (dv, i) {
+      var mi = document.querySelector('#edit-devices input[data-f="model"][data-i="' + i + '"]');
+      var qi = document.querySelector('#edit-devices input[data-f="qty"][data-i="' + i + '"]');
+      var item = { index: i + 1 };
+      var changed = false;
+      var m = mi ? mi.value.trim() : "";
+      if (m && m !== dv.model) { item.model = m; changed = true; }
+      var q = qi ? intOr(qi.value) : null;
+      if (q && q !== dv.qty) { item.qty = q; changed = true; }
+      if (changed) changes.push(item);
+    });
+    if (changes.length) patch.devices = changes;
+
+    if (!Object.keys(patch).length) { alertMsg("没有需要保存的修改"); return; }
+    busy(true, btn);
+    try {
+      var d = await post("/api/agent/" + encodeURIComponent(st.thread_id) + "/edit", patch);
+      alertMsg("");
+      render(d);
+    } catch (e) {
+      alertMsg("重算失败：" + e.message);
+    } finally {
+      busy(false, btn);
+    }
+  }
+
+  async function downloadPdf(btn) {
+    if (!st.thread_id) return;
+    busy(true, btn);
+    try {
+      var r = await fetch("/api/agent/" + encodeURIComponent(st.thread_id) + "/pdf",
+        { method: "POST" });
+      if (!r.ok) {
+        var d = await r.json().catch(function () { return {}; });
+        throw new Error((d.detail && d.detail.message) || ("HTTP " + r.status));
+      }
+      var blob = await r.blob();
+      var a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "方案.pdf";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(function () { URL.revokeObjectURL(a.href); }, 4000);
+    } catch (e) {
+      alertMsg("PDF 导出失败：" + e.message);
+    } finally {
+      busy(false, btn);
+    }
+  }
+
+  async function loadStats() {
+    try {
+      var s = await api("/api/stats/overview");
+      $("stats-line").textContent = "今日会话 " + (s.today_start || 0) +
+        " · 今日完成 " + (s.today_done || 0) + " · 今日导出 " + (s.today_export || 0) +
+        " · 累计完成率 " + Math.round((s.done_rate || 0) * 100) + "%";
+    } catch (e) {
+      $("stats-line").textContent = "";
+    }
+  }
+  function fmtTime(s) { return s ? String(s).replace("T", " ").slice(0, 16) : "—"; }
+
+  function historyHtml(items) {
+    if (!items.length) return '<div class="history-empty">还没有历史会话，先在上面启动一个。</div>';
+    return items.map(function (it) {
+      return '<div class="history-item" data-tid="' + esc(it.thread_id) + '">' +
+        '<div class="history-main"><div class="history-title">' + esc(it.title) + "</div>" +
+        '<div class="history-meta"><span>' + esc(STATUS_LABEL[it.status] || it.status) + "</span>" +
+        (it.lanes ? "<span>" + fmt(it.lanes) + " 路</span>" : "") +
+        (it.retention_days ? "<span>存储 " + fmt(it.retention_days) + " 天</span>" : "") +
+        "<span>" + (it.version_count || 0) + " 个版本</span>" +
+        "<span>" + esc(fmtTime(it.updated_at)) + "</span></div></div>" +
+        '<div class="history-actions">' +
+        '<button class="btn primary" data-act="open">续聊</button>' +
+        '<button class="btn ghost" data-act="rename">重命名</button>' +
+        '<button class="btn ghost" data-act="del">删除</button>' +
+        "</div></div>";
+    }).join("");
+  }
+
+  async function loadHistory() {
+    loadStats();
+    var host = $("history-list");
+    host.innerHTML = '<div class="history-empty">加载中…</div>';
+    try {
+      var d = await api("/api/agent/sessions?limit=50");
+      host.innerHTML = historyHtml(d.items || []);
+    } catch (e) {
+      host.innerHTML = '<div class="history-empty">读取失败：' + esc(e.message) + "</div>";
+    }
+  }
+
+  async function renameSession(tid, oldTitle, btn) {
+    var title = window.prompt("重命名会话", oldTitle || "");
+    if (title == null || !title.trim() || title.trim() === oldTitle) return;
+    btn.disabled = true;
+    try {
+      await api("/api/agent/sessions/" + encodeURIComponent(tid), {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: title.trim() }),
+      });
+      await loadHistory();
+    } catch (e) { alertMsg("重命名失败：" + e.message); }
+    finally { btn.disabled = false; }
+  }
+
+  async function deleteSession(tid, title, btn) {
+    if (!window.confirm("删除会话「" + title + "」？checkpoint、拓扑图与 Word 会一并删除，不可恢复。")) return;
+    btn.disabled = true;
+    try {
+      await api("/api/agent/sessions/" + encodeURIComponent(tid), { method: "DELETE" });
+      if (st.thread_id === tid) {
+        st.thread_id = null; st.data = null; st.spec = null; st.files = null;
+        $("run-card").hidden = true;
+        try { localStorage.removeItem(KEY); } catch (e) { /* ignore */ }
+        step(1);
+      }
+      await loadHistory();
+    } catch (e) { alertMsg("删除失败：" + e.message); }
+    finally { btn.disabled = false; }
+  }
+
+  async function loadVersions(tid) {
+    var box = $("version-box"), list = $("version-list");
+    if (!tid) { box.hidden = true; return; }
+    try {
+      var d = await api("/api/agent/sessions/" + encodeURIComponent(tid) + "/versions");
+      var items = d.items || [];
+      if (!items.length) { box.hidden = true; list.innerHTML = ""; return; }
+      var LABELS = { docx: "Word", png: "简略图", png_detail: "详细图" };
+      list.innerHTML = items.map(function (v) {
+        var links = Object.keys(LABELS).filter(function (k) { return v.files[k]; })
+          .map(function (k) {
+            return '<a href="' + esc(v.files[k].url) + '" target="_blank" rel="noopener">' +
+              LABELS[k] + "</a>";
+          }).join("");
+        var s = v.summary || {};
+        return "<li>V" + v.version_no + " · " + esc(fmtTime(v.created_at)) +
+          (s.lanes ? " · " + fmt(s.lanes) + " 路" : "") +
+          (s.price ? " · 约 ¥" + fmt(s.price) : "") + " " + links + "</li>";
+      }).join("");
+      box.hidden = false;
+    } catch (e) { box.hidden = true; }
+  }
+
+  async function doLogout(btn) {
+    btn.disabled = true;
+    try { await api("/api/auth/logout", { method: "POST" }); } catch (e) { /* ignore */ }
+    window.location.href = "/agent";
+  }
+
+  async function loadMe() {
+    var host = $("nav-user");
+    if (!host) return;
+    try {
+      var d = await api("/api/auth/me");
+      var user = d.user;
+      if (!user) {
+        host.innerHTML = '<a class="user-login" href="/login">登录 / 注册</a>';
+        return;
+      }
+      host.innerHTML = '<span class="user-chip">已登录 <b>' + esc(user.username) + "</b></span>" +
+        '<button class="link" data-act="logout">退出</button>';
+    } catch (e) { /* 接口不可用时保留静态入口 */ }
+  }
+
   function init() {
     $("btn-demo").addEventListener("click", function () { $("demand").value = DEMO; });
 
@@ -353,6 +712,36 @@
       var tid = null;
       try { tid = localStorage.getItem(KEY); } catch (e) { /* ignore */ }
       restore(tid, false);
+    });
+
+    // 历史会话：展开即加载，操作走事件委托（续聊 / 重命名 / 删除）
+    $("btn-history").addEventListener("click", function () {
+      var card = $("history-card");
+      card.hidden = !card.hidden;
+      if (!card.hidden) {
+        loadHistory();
+        card.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    });
+    $("btn-history-refresh").addEventListener("click", loadHistory);
+    $("nav-user").addEventListener("click", function (e) {
+      var btn = e.target.closest ? e.target.closest("[data-act='logout']") : null;
+      if (btn) doLogout(btn);
+    });
+    loadMe();
+    $("btn-edit-save").addEventListener("click", function () { saveEdit(this); });
+    $("btn-pdf").addEventListener("click", function () { downloadPdf(this); });
+    $("history-list").addEventListener("click", function (e) {
+      var btn = e.target.closest ? e.target.closest("[data-act]") : null;
+      if (!btn) return;
+      var box = btn.closest(".history-item");
+      var tid = box && box.dataset.tid;
+      if (!tid) return;
+      var titleEl = box.querySelector(".history-title");
+      var title = titleEl ? titleEl.textContent : "";
+      if (btn.dataset.act === "open") restore(tid, false);
+      else if (btn.dataset.act === "rename") renameSession(tid, title, btn);
+      else if (btn.dataset.act === "del") deleteSession(tid, title, btn);
     });
     $("btn-gap").addEventListener("click", function () {
       var v = $("gap-input").value.trim();

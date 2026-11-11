@@ -34,6 +34,60 @@
     .tool-list b { font-family:var(--mono); font-size:12px; }
     .tool-args { font-family:var(--mono); font-size:11.5px; color:var(--muted); }
     .tool-bad { color:var(--red-dark); }
+    .history-list { display:flex; flex-direction:column; gap:10px; }
+    .history-item { display:flex; gap:12px; align-items:flex-start; justify-content:space-between;
+      border:1px solid var(--line); border-radius:10px; padding:12px 14px; background:var(--bg-2); }
+    .history-main { min-width:0; }
+    .history-title { font-size:14px; font-weight:700; color:var(--ink); }
+    .history-meta { font-size:11.5px; color:var(--muted); margin-top:4px; display:flex;
+      gap:10px; flex-wrap:wrap; }
+    .history-actions { display:flex; gap:8px; flex-shrink:0; }
+    .history-actions .btn { padding:5px 10px; font-size:12px; }
+    .history-empty { color:var(--muted); font-size:13px; padding:10px 0; }
+    .version-box { margin-top:16px; border-top:1px dashed var(--line); padding-top:12px; }
+    .version-box h4 { margin:0 0 8px; font-size:13px; color:var(--ink); }
+    .version-list { margin:0; padding-left:18px; font-size:12.5px; line-height:2; color:var(--ink-2); }
+    .version-list a { color:var(--red-dark); text-decoration:none; margin-right:8px; }
+    .stats-line { font-size:12px; color:var(--muted); margin-bottom:10px; }
+    .quote-box, .edit-box { border:1px solid var(--line); border-radius:10px;
+      padding:12px 14px; margin-bottom:14px; background:var(--bg-2); }
+    .quote-head { display:flex; align-items:baseline; justify-content:space-between; gap:10px; }
+    .quote-head h4, .edit-box h4 { margin:0 0 8px; font-size:13px; color:var(--ink); }
+    .quote-total { font-size:18px; font-weight:800; color:var(--red-dark); }
+    .quote-box .mini-table { margin-top:6px; }
+    .edit-box .mini-table { margin:8px 0 10px; }
+    .edit-box input { width:100%; }
+    .edit-devices { max-height:230px; overflow:auto; }
+    .edit-devices .mini-table td { padding:4px 6px; }
+    .reason-cell { font-size:11.5px; color:var(--muted); max-width:260px; }
+    .nav-user { display:flex; align-items:center; gap:8px; font-size:12.5px; color:var(--muted); }
+    .nav-user .user-chip { display:flex; align-items:center; gap:8px; padding:6px 12px;
+      border:1px solid var(--line); border-radius:999px; background:var(--bg-2); }
+    .nav-user .user-chip b { color:var(--ink); font-weight:700; }
+    .nav-user .link { background:none; border:0; padding:0; cursor:pointer;
+      color:var(--red-dark); font-size:12.5px; font-weight:600; }
+    .nav-user .user-login { padding:6px 14px; border-radius:999px; border:1px solid var(--line);
+      background:var(--bg-2); color:var(--ink-2); font-weight:600; transition:all .18s ease; }
+    .nav-user .user-login:hover { border-color:var(--line-strong); color:var(--red); }
+    .pipe-steps { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px; }
+    .pipe-step { display:flex; align-items:center; gap:6px; padding:6px 11px; border-radius:999px;
+      border:1px solid var(--line); background:var(--bg-2); font-size:12px; color:var(--muted); }
+    .pipe-step .pipe-dot { width:7px; height:7px; border-radius:50%; background:var(--line-strong); }
+    .pipe-step.done { background:#fff; border-color:var(--line-strong); color:var(--ink); }
+    .pipe-step.done .pipe-dot { background:var(--red); }
+    .pipe-step.active { background:var(--red-soft); border-color:var(--red); color:var(--red-dark); }
+    .pipe-step.active .pipe-dot { background:var(--red); animation:pipePulse 1.2s ease-in-out infinite; }
+    .pipe-step.fail { border-color:var(--red-dark); color:var(--red-dark); }
+    .pipe-step.fail .pipe-dot { background:var(--red-dark); }
+    .pipe-detail { border-top:1px dashed var(--line); padding:8px 0; }
+    .pipe-detail:first-of-type { border-top:0; }
+    .pipe-detail summary { cursor:pointer; font-size:13px; font-weight:700; color:var(--ink);
+      display:flex; gap:8px; align-items:baseline; flex-wrap:wrap; }
+    .pipe-detail summary span { font-weight:400; font-size:11.5px; color:var(--muted); }
+    .pipe-detail .mini-table { margin:8px 0; }
+    .pipe-empty { font-size:12px; color:var(--muted); padding:4px 0; }
+    @keyframes pipePulse { 0%,100% { opacity:1 } 50% { opacity:.3 } }
+    @media (prefers-reduced-motion: reduce) { .pipe-step.active .pipe-dot { animation:none } }
   </style>
 </head>
 <body>
@@ -49,6 +103,9 @@
       <a href="/compare">竞品对比</a>
     </nav>
     <div class="nav-status"><span class="dot"></span>LangGraph · 断点续跑</div>
+    <div class="nav-user" id="nav-user">
+      <a class="user-login" href="/login">登录 / 注册</a>
+    </div>
     <button class="tut-btn" id="btn-tutorial" title="使用教程">? 使用教程</button>
   </header>
 
@@ -57,7 +114,6 @@
       <div class="hero-text">
         <span class="eyebrow">AGENT WORKFLOW · HUMAN IN THE LOOP</span>
         <h1>会停下来<span class="hl">等你确认</span>的方案 Agent</h1>
-        <p>描述需求 → 自动选型与测算 → 人工确认 → 生成拓扑图与 Word 方案。会话自动落盘，可随时续跑。</p>
       </div>
       <nav class="steps" id="agent-steps" aria-label="Agent 流程">
         <button class="step active" data-step="1"><i>01</i><span>需求解析</span></button>
@@ -73,7 +129,6 @@
         <div>
           <span class="eyebrow">Step 01 — Requirement</span>
           <h2>描述客户需求</h2>
-          <p>大模型只理解场景、不编数字；型号、存储、带宽均由本地确定性算法核算，断网也能跑。</p>
         </div>
         <span class="engine-badge" id="engine-badge">正在检测引擎…</span>
       </div>
@@ -95,13 +150,27 @@
           <button class="tpl-chip" data-tpl="3">商业综合体 · 停车场</button>
         </div>
         <div class="hint-row">
-          <span>会话会落盘到本地 checkpoint，刷新页面或重启服务都能接着跑</span>
           <button class="link" id="btn-demo">填入示例</button>
         </div>
         <div class="agent-actions" style="margin-top:14px">
           <button class="btn primary" id="btn-start">启动 Agent</button>
           <button class="btn ghost" id="btn-restore">恢复上次会话</button>
+          <button class="btn ghost" id="btn-history">历史会话</button>
         </div>
+      </div>
+    </section>
+
+    <section class="card" id="history-card" hidden>
+      <div class="card-head flex">
+        <div>
+          <span class="eyebrow">History — Sessions</span>
+          <h2>历史会话</h2>
+        </div>
+        <button class="btn ghost" id="btn-history-refresh">刷新</button>
+      </div>
+      <div class="card-body">
+        <div class="stats-line" id="stats-line"></div>
+        <div class="history-list" id="history-list"></div>
       </div>
     </section>
 
@@ -120,10 +189,27 @@
         <div class="kb-note" id="research-note" hidden></div>
         <div class="alert" id="alert" hidden></div>
 
+        <div class="agent-section" id="pipeline-panel" hidden>
+          <h3>Agent 执行过程</h3>
+          <div class="pipe-steps" id="pipe-steps"></div>
+          <details class="pipe-detail" id="pipe-intent" open>
+            <summary>意图识别 Agent<span id="pipe-intent-note"></span></summary>
+            <div id="pipe-intent-body"></div>
+          </details>
+          <details class="pipe-detail" id="pipe-selection" open>
+            <summary>选型 Agent<span id="pipe-selection-note"></span></summary>
+            <div id="pipe-selection-body"></div>
+          </details>
+          <details class="pipe-detail" id="pipe-bom">
+            <summary>配单 Agent<span id="pipe-bom-note"></span></summary>
+            <div id="pipe-bom-body"></div>
+          </details>
+          <div class="flow-note">每个子 Agent 只把结构化产物写回状态；型号、数量、价格全部来自产品库与确定性计算，可追溯。</div>
+        </div>
+
         <div class="agent-section" id="gap-panel" hidden>
           <h3>需要补充信息</h3>
-          <div class="muted" style="font-size:12.5px">硬闸门拦截了方案缺口，补充后会自动回到构建节点重算。
-            <span id="gap-engine"></span></div>
+          <div class="muted" style="font-size:12.5px"><span id="gap-engine"></span></div>
           <ul class="gap-list" id="gap-list"></ul>
           <textarea id="gap-input" rows="3" placeholder="例如：主干道 15 路，存储 45 天"></textarea>
           <div class="agent-actions">
@@ -152,6 +238,26 @@
 
         <div class="agent-section" id="done-panel" hidden>
           <h3>交付物已生成</h3>
+          <div class="quote-box" id="quote-box" hidden>
+            <div class="quote-head">
+              <h4>报价单 · 标准价</h4>
+              <div class="quote-total" id="quote-total">—</div>
+            </div>
+            <div id="quote-table"></div>
+            <div class="muted" id="quote-note" style="font-size:11.5px"></div>
+          </div>
+          <div class="edit-box" id="edit-box">
+            <h4>在线编辑（保存后重新核算并重新出图）</h4>
+            <div class="grid-3">
+              <label class="field"><span>总路数</span><input id="op-lanes" type="number" min="1"></label>
+              <label class="field"><span>存储天数</span><input id="op-days" type="number" min="1"></label>
+              <label class="field"><span>项目名</span><input id="op-name" type="text"></label>
+            </div>
+            <div id="edit-devices"></div>
+            <div class="agent-actions">
+              <button class="btn primary" id="btn-edit-save">保存并重算</button>
+            </div>
+          </div>
           <div class="topo-switch">
             <button class="topo-mode active" data-mode="simple">简略拓扑</button>
             <button class="topo-mode" data-mode="detailed">详细连线</button>
@@ -159,19 +265,20 @@
           <div class="topo-host" id="topo-host"></div>
           <div class="agent-actions">
             <a class="btn primary" id="dl-docx" href="#">下载 Word 方案</a>
+            <a class="btn ghost" id="dl-pptx" href="#">下载 PPT</a>
+            <button class="btn ghost" id="btn-pdf">导出 PDF</button>
             <a class="btn ghost" id="dl-png" href="#">下载简略图</a>
             <a class="btn ghost" id="dl-png-detail" href="#">下载详细图</a>
             <button class="btn ghost" id="dl-png-svg">导出当前图 PNG</button>
             <button class="btn ghost" id="btn-new">再做一个</button>
           </div>
+          <div class="version-box" id="version-box" hidden>
+            <h4>方案版本</h4>
+            <ul class="version-list" id="version-list"></ul>
+          </div>
         </div>
       </div>
     </section>
-
-    <p class="flow-note">
-      LangGraph 只承担三件事：checkpoint 断点续跑、human-in-loop 中断、校验失败条件回边。
-      存储/带宽由 <span class="mono">app/calc.py</span> 确定性计算，型号来自本地产品库，不由模型编造。
-    </p>
   </main>
 
   <!-- 使用教程弹窗 -->
@@ -189,12 +296,11 @@
           <li><b>看拓扑图</b>：通过后默认看「简略拓扑」，点「详细连线」可切换到全配单互连图，看清每类设备用在哪、怎么连。</li>
           <li><b>导出</b>：可下载 Word 方案、简略图、详细图，或点「导出当前图 PNG」保存正在看的那张。</li>
         </ol>
-        <p class="tut-note">提示：会话会落盘，刷新或重启服务都能接着跑；断网也能用（自动降级本地规则）。</p>
       </div>
     </div>
   </div>
 
-  <script src="/static/topology.js?v=20261106-2100"></script>
-  <script src="/static/agent.js?v=20261106-2100"></script>
+  <script src="/static/topology.js?v=20261110-2450"></script>
+  <script src="/static/agent.js?v=20261111-1200"></script>
 </body>
 </html>

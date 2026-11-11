@@ -20,7 +20,7 @@ from datetime import datetime
 from pathlib import Path
 from urllib.parse import quote
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -30,7 +30,9 @@ from config.settings import BASE_DIR, DB_PATH
 
 from .rag import service as rag_service
 from .compare import FIELDS, compare as compare_competitor, export_docx
-from . import compare_service, netcheck
+from . import auth, compare_service, metrics, netcheck, sessions
+from .builder import SpecGateError
+from .quote import build_quote
 from agent import service as agent_service
 from agent.parser import status as agent_parser_status
 from agent.tools import status as agent_tools_status
@@ -69,8 +71,23 @@ class AgentResumeRequest(BaseModel):
     answer: str | dict
 
 
+class SessionRenameRequest(BaseModel):
+    title: str
+
+
+class AgentEditRequest(BaseModel):
+    lanes: int | None = None
+    retention_days: int | None = None
+    name: str | None = None
+    devices: list[dict] | None = None
+
+
 app = FastAPI(title="大华解决方案助手", version="1.1")
 app.mount("/static", StaticFiles(directory=WEB_DIR), name="static")
+
+CLIENT_COOKIE = "dh_cid"
+AUTH_COOKIE = "dh_auth"
+_CLIENT_RE = re.compile(r"^[0-9a-f]{32}$")
 
 
 @app.middleware("http")
@@ -91,14 +108,104 @@ async def _no_cache_pages_and_assets(request, call_next):
     return resp
 
 
+@app.middleware("http")
+async def _client_identity(request: Request, call_next):
+    """匿名客户端标识：登录功能上线前，用 HttpOnly cookie 绑定会话与导出文件。
+
+    这层只解决「同一个浏览器能看自己的历史」；P1 接入账号后由 user_id
+    做真正的数据隔离，cookie 仅作为未登录访客的兜底。
+    """
+    cid = request.cookies.get(CLIENT_COOKIE) or ""
+    fresh = not _CLIENT_RE.match(cid)
+    if fresh:
+        cid = uuid.uuid4().hex
+    request.state.client_id = cid
+    user = auth.user_by_token(request.cookies.get(AUTH_COOKIE) or "")
+    request.state.user_id = user["id"] if user else None
+    request.state.user = user
+    resp = await call_next(request)
+    if fresh:
+        resp.set_cookie(CLIENT_COOKIE, cid, max_age=365 * 24 * 3600,
+                        httponly=True, samesite="lax")
+    return resp
+
+
+def _cid(request: Request) -> str:
+    return getattr(request.state, "client_id", "") or ""
+
+
+def _uid(request: Request) -> int | None:
+    return getattr(request.state, "user_id", None)
+
+
 @app.get("/", include_in_schema=False)
 def index():
     """原「工作台」已并入 Agent 工作台，根路径重定向过去。"""
     return RedirectResponse(url="/agent", status_code=307)
 
 
+@app.get("/login", include_in_schema=False)
+def login_page() -> FileResponse:
+    return FileResponse(WEB_DIR / "login.html")
+
+
 @app.get("/api/health")
 def health() -> dict:
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# 账号：注册 / 登录 / 登出 / 当前用户
+# ---------------------------------------------------------------------------
+
+class AuthRequest(BaseModel):
+    username: str
+    password: str
+
+
+def _set_auth_cookie(resp: Response, token: str) -> None:
+    resp.set_cookie(AUTH_COOKIE, token, max_age=auth.TOKEN_DAYS * 24 * 3600,
+                    httponly=True, samesite="lax")
+
+
+@app.get("/api/auth/me")
+def api_auth_me(request: Request) -> dict:
+    return {"user": getattr(request.state, "user", None)}
+
+
+@app.post("/api/auth/register")
+def api_auth_register(req: AuthRequest, request: Request, response: Response) -> dict:
+    try:
+        user = auth.register(req.username, req.password)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail={"message": str(exc)}) from exc
+    token = auth.create_token(user["id"])
+    _set_auth_cookie(response, token)
+    # 新账号从干净工作区开始：不认领本浏览器的匿名会话，并换发新的匿名标识，
+    # 否则刚注册就会看到注册前的匿名案例（历史列表与自动恢复都会带出来）。
+    response.set_cookie(CLIENT_COOKIE, uuid.uuid4().hex, max_age=365 * 24 * 3600,
+                        httponly=True, samesite="lax")
+    metrics.record("register", _cid(request), None)
+    return {"user": user, "claimed": {"sessions": 0, "exports": 0}}
+
+
+@app.post("/api/auth/login")
+def api_auth_login(req: AuthRequest, request: Request, response: Response) -> dict:
+    try:
+        user = auth.authenticate(req.username, req.password)
+    except ValueError as exc:
+        raise HTTPException(status_code=401, detail={"message": str(exc)}) from exc
+    token = auth.create_token(user["id"])
+    _set_auth_cookie(response, token)
+    claimed = sessions.claim(_cid(request), user["id"])
+    metrics.record("login", _cid(request), None)
+    return {"user": user, "claimed": claimed}
+
+
+@app.post("/api/auth/logout")
+def api_auth_logout(request: Request, response: Response) -> dict:
+    auth.delete_token(request.cookies.get(AUTH_COOKIE) or "")
+    response.delete_cookie(AUTH_COOKIE)
     return {"ok": True}
 
 
@@ -223,14 +330,23 @@ async def api_compare_group_docx(req: GroupCompareRequest) -> FileResponse:
 
 
 @app.get("/api/export/{filename}")
-def export_file(filename: str, inline: int = 0) -> FileResponse:
-    path = EXPORT_DIR / filename
-    if Path(filename).name != filename or not path.is_file():
+def export_file(filename: str, request: Request, inline: int = 0) -> FileResponse:
+    """导出下载：防路径穿越 + 归属校验（文件由哪个客户端生成，就只有它能下载）。"""
+    safe = Path(filename).name
+    if safe != filename or not safe:
         raise HTTPException(status_code=404, detail={"message": "文件不存在或已过期", "gaps": []})
+    root = EXPORT_DIR.resolve()
+    path = (root / safe).resolve()
+    if root not in path.parents or not path.is_file():
+        raise HTTPException(status_code=404, detail={"message": "文件不存在或已过期", "gaps": []})
+    if not sessions.owns_file(_cid(request), safe, _uid(request)):
+        raise HTTPException(status_code=403, detail={"message": "无权访问该文件", "gaps": []})
+    if not inline:
+        metrics.record("export", _cid(request), None, filename=safe)
     media = DOCX_MIME if path.suffix.lower() == ".docx" else "image/png"
     if inline:
         return FileResponse(path, media_type=media)
-    return FileResponse(path, media_type=media, filename=filename)
+    return FileResponse(path, media_type=media, filename=safe)
 
 
 # ---------------------------------------------------------------------------
@@ -417,39 +533,174 @@ def agent_page() -> FileResponse:
     return FileResponse(WEB_DIR / "agent.html")
 
 
+@app.get("/api/agent/sessions")
+def api_agent_sessions(request: Request, limit: int = 50, offset: int = 0) -> dict:
+    """当前客户端 / 当前账号的历史会话（按最近活动倒序）。"""
+    return sessions.list_sessions(_cid(request), limit, offset, _uid(request))
+
+
+@app.patch("/api/agent/sessions/{thread_id}")
+def api_agent_session_rename(thread_id: str, req: SessionRenameRequest,
+                             request: Request) -> dict:
+    try:
+        ok = sessions.rename_session(_cid(request), thread_id, req.title, _uid(request))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail={"message": str(exc)}) from exc
+    if not ok:
+        raise HTTPException(status_code=404, detail={"message": "会话不存在"})
+    return {"ok": True, "thread_id": thread_id, "title": req.title.strip()}
+
+
+@app.delete("/api/agent/sessions/{thread_id}")
+def api_agent_session_delete(thread_id: str, request: Request) -> dict:
+    """删除会话：索引 + LangGraph checkpoint + 该会话产物文件一并清理。"""
+    cid = _cid(request)
+    info = sessions.delete_session(cid, thread_id, _uid(request))
+    if info is None:
+        raise HTTPException(status_code=404, detail={"message": "会话不存在"})
+    try:
+        agent_service.delete_thread(thread_id)
+    except Exception:  # noqa: BLE001 —— checkpoint 清理失败不影响索引已删除
+        pass
+    removed = 0
+    for name in info["files"]:
+        path = EXPORT_DIR / Path(name).name
+        try:
+            if path.is_file():
+                path.unlink()
+                removed += 1
+        except OSError:
+            pass
+    metrics.record("session_delete", cid, thread_id)
+    return {"ok": True, "thread_id": thread_id, "removed_files": removed}
+
+
+@app.get("/api/agent/sessions/{thread_id}/versions")
+def api_agent_session_versions(thread_id: str, request: Request) -> dict:
+    """方案版本快照：每次「通过并生成」新增一版，可回溯下载历史交付物。"""
+    items = sessions.list_versions(_cid(request), thread_id, _uid(request))
+    if items is None:
+        raise HTTPException(status_code=404, detail={"message": "会话不存在"})
+    return {"items": items}
+
+
 @app.get("/api/agent/status")
 def api_agent_status() -> dict:
     """当前需求解析引擎 + 工具核实层状态（断网自动降级，流程不受影响）。"""
     return {"ok": True, **agent_parser_status(), "tools": agent_tools_status()}
 
 
+def _guard_thread(request: Request, thread_id: str) -> None:
+    """会话归属校验：既不属于本浏览器、也不属于当前账号的 thread 按不存在处理。"""
+    owner = sessions.owner_of(thread_id)
+    if owner is None:
+        return
+    if owner["client_id"] == _cid(request):
+        return
+    uid = _uid(request)
+    if uid is not None and owner["user_id"] == str(uid):
+        return
+    raise HTTPException(status_code=404, detail={"message": "会话不存在或已过期"})
+
+
 @app.post("/api/agent/start")
-def api_agent_start(req: AgentStartRequest) -> dict:
+def api_agent_start(req: AgentStartRequest, request: Request) -> dict:
     try:
-        return agent_service.start(
+        data = agent_service.start(
             req.text, name=req.name, lanes=req.lanes,
             retention_days=req.retention_days,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail={"message": str(exc)}) from exc
+    cid = _cid(request)
+    sessions.record(cid, data, user_id=_uid(request))
+    metrics.record(metrics.START, cid, data.get("thread_id"))
+    return data
 
 
 @app.get("/api/agent/{thread_id}/state")
-def api_agent_state(thread_id: str) -> dict:
+def api_agent_state(thread_id: str, request: Request) -> dict:
+    _guard_thread(request, thread_id)
     try:
-        return agent_service.state_of(thread_id)
+        data = agent_service.state_of(thread_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail={"message": "会话不存在或已过期"}) from exc
+    # 只读刷新不改变最近活动时间，避免历史列表顺序被打乱
+    sessions.record(_cid(request), data, touch=False, user_id=_uid(request))
+    return data
 
 
 @app.post("/api/agent/{thread_id}/resume")
-def api_agent_resume(thread_id: str, req: AgentResumeRequest) -> dict:
+def api_agent_resume(thread_id: str, req: AgentResumeRequest, request: Request) -> dict:
+    _guard_thread(request, thread_id)
     try:
-        return agent_service.resume(thread_id, req.answer)
+        data = agent_service.resume(thread_id, req.answer)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail={"message": "会话不存在或已结束"}) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail={"message": str(exc)}) from exc
+    cid = _cid(request)
+    sessions.record(cid, data, user_id=_uid(request))
+    if data.get("status") == "done":
+        metrics.record(metrics.APPROVE, cid, thread_id)
+    return data
+
+
+@app.get("/api/agent/{thread_id}/quote")
+def api_agent_quote(thread_id: str, request: Request) -> dict:
+    """报价单：按当前 Spec 汇总标准价（前端与 Excel/PPT 导出共用同一口径）。"""
+    _guard_thread(request, thread_id)
+    try:
+        data = agent_service.state_of(thread_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail={"message": "会话不存在或已过期"}) from exc
+    if not data.get("spec"):
+        raise HTTPException(status_code=400, detail={"message": "会话还没有生成 Spec"})
+    return build_quote(data["spec"])
+
+
+@app.post("/api/agent/{thread_id}/edit")
+def api_agent_edit(thread_id: str, req: AgentEditRequest, request: Request) -> dict:
+    """在线编辑：改路数 / 存储天数 / 项目名 / 换型号 / 改数量，确定性重算后重新渲染。"""
+    _guard_thread(request, thread_id)
+    patch = {k: v for k, v in req.model_dump().items() if v not in (None, "", [])}
+    if not patch:
+        raise HTTPException(status_code=400, detail={"message": "没有需要保存的修改"})
+    try:
+        data = agent_service.edit_outputs(thread_id, patch)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail={"message": "会话不存在或已过期"}) from exc
+    except (ValueError, SpecGateError) as exc:
+        gaps = getattr(exc, "gaps", None) or [str(exc)]
+        raise HTTPException(status_code=400,
+                            detail={"message": "；".join(gaps), "gaps": gaps}) from exc
+    cid = _cid(request)
+    sessions.record(cid, data, user_id=_uid(request))
+    metrics.record("edit", cid, thread_id, fields=sorted(patch.keys()))
+    return data
+
+
+@app.post("/api/agent/{thread_id}/pdf")
+def api_agent_pdf(thread_id: str, request: Request) -> FileResponse:
+    """把当前 Word 方案转成 PDF（Windows + Microsoft Word）。"""
+    _guard_thread(request, thread_id)
+    try:
+        data, pdf = agent_service.export_pdf(thread_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404,
+                            detail={"message": "会话还没有生成 Word 方案"}) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail={"message": str(exc)}) from exc
+    cid = _cid(request)
+    sessions.record(cid, data, user_id=_uid(request), version=False)
+    metrics.record("export", cid, thread_id, kind="pdf")
+    return FileResponse(pdf, media_type="application/pdf", filename=pdf.name)
+
+
+@app.get("/api/stats/overview")
+def api_stats_overview(request: Request) -> dict:
+    """当前客户端的使用概览（启动数 / 完成数 / 导出数 / 完成率）。"""
+    return metrics.overview(_cid(request))
 
 
 @app.get("/kb", include_in_schema=False)

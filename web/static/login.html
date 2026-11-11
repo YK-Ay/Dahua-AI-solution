@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>登录 / 注册 · 大华解决方案助手</title>
+  <link rel="stylesheet" href="/static/styles.css?v=20261106-2100">
+  <style>
+    .auth-wrap { max-width: 460px; margin: 0 auto; padding: 54px 24px 80px; }
+    .auth-card { background: var(--panel); border: 1px solid var(--line);
+      border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
+    .auth-head { padding: 26px 28px 18px; border-bottom: 1px solid var(--line); }
+    .auth-head h1 { margin: 8px 0 6px; font-size: 23px; font-weight: 800; }
+    .auth-head p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.7; }
+    .auth-tabs { display: flex; gap: 8px; padding: 18px 28px 0; }
+    .auth-tab { flex: 1; padding: 9px 0; border-radius: 999px; cursor: pointer;
+      border: 1px solid var(--line); background: var(--bg-2); color: var(--ink-2);
+      font-size: 13.5px; font-weight: 600; transition: all .18s ease; }
+    .auth-tab:hover { border-color: var(--line-strong); color: var(--red); }
+    .auth-tab.active { color: #fff; border-color: transparent;
+      background: linear-gradient(135deg, var(--red), var(--red-dark));
+      box-shadow: 0 8px 20px -8px var(--red-glow); }
+    .auth-body { padding: 20px 28px 26px; display: flex; flex-direction: column; gap: 14px; }
+    .auth-body .btn { width: 100%; padding: 12px 18px; }
+    .auth-msg { font-size: 12.5px; line-height: 1.6; padding: 10px 12px;
+      border-radius: var(--radius-sm); border: 1px solid var(--line);
+      background: var(--bg-2); color: var(--ink-2); }
+    .auth-msg.err { color: var(--red-dark); background: var(--red-soft);
+      border-color: var(--line-strong); }
+    .auth-msg.ok { color: #147a53; background: rgba(26, 158, 107, .08);
+      border-color: rgba(26, 158, 107, .32); }
+    .auth-note { margin: 0; font-size: 11.5px; color: var(--muted); line-height: 1.8; }
+    .auth-back { margin-left: auto; font-size: 12.5px; color: var(--muted); }
+    .auth-back:hover { color: var(--red); }
+    .auth-user { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-2); }
+    .auth-user b { color: var(--ink); }
+    .auth-user .link { background: none; border: 0; padding: 0; cursor: pointer;
+      color: var(--red-dark); font-size: 13px; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <header class="topnav">
+    <div class="nav-brand">
+      <span class="brand-mark">DH</span>
+      <span class="brand-name">大华解决方案助手<small>DAHUA SOLUTION DESK</small></span>
+    </div>
+    <a class="auth-back" href="/agent">返回工作台</a>
+  </header>
+
+  <main class="auth-wrap">
+    <section class="auth-card">
+      <div class="auth-head">
+        <span class="eyebrow">ACCOUNT · DATA ISOLATION</span>
+        <h1 id="auth-title">登录工作台</h1>
+        <p id="auth-sub">登录后，历史会话、方案版本与导出文件只对当前账号可见。</p>
+      </div>
+      <div class="auth-tabs">
+        <button class="auth-tab active" data-mode="login" type="button">登录</button>
+        <button class="auth-tab" data-mode="register" type="button">注册</button>
+      </div>
+      <div class="auth-body">
+        <div class="auth-user" id="auth-user" hidden></div>
+        <div class="auth-msg" id="auth-msg" hidden></div>
+        <form id="auth-form" style="display:flex;flex-direction:column;gap:14px">
+          <label class="field"><span>用户名</span>
+            <input id="f-user" name="username" type="text" autocomplete="username"
+                   maxlength="32" placeholder="3-32 位字母 / 数字 / 下划线 / 中文"></label>
+          <label class="field"><span>密码</span>
+            <input id="f-pass" name="password" type="password" autocomplete="current-password"
+                   maxlength="64" placeholder="6-64 位"></label>
+          <button class="btn primary" id="btn-submit" type="submit">登录</button>
+        </form>
+        <p class="auth-note">未登录时，历史会话仅绑定当前浏览器；登录已有账号会保留本机匿名会话，注册新账号则从空白工作台开始。</p>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    (function () {
+      "use strict";
+      var mode = "login";
+      var COPY = {
+        login: { title: "登录工作台", sub: "登录后，历史会话、方案版本与导出文件只对当前账号可见。", btn: "登录" },
+        register: { title: "创建账号", sub: "注册即自动登录，新账号从空白工作台开始，不继承本浏览器此前的匿名会话。", btn: "注册并登录" }
+      };
+      function $(id) { return document.getElementById(id); }
+
+      function msg(text, kind) {
+        var el = $("auth-msg");
+        el.hidden = !text;
+        el.textContent = text || "";
+        el.className = "auth-msg" + (kind ? " " + kind : "");
+      }
+
+      function setMode(next) {
+        mode = next;
+        document.querySelectorAll(".auth-tab").forEach(function (b) {
+          b.classList.toggle("active", b.dataset.mode === next);
+        });
+        var c = COPY[next];
+        $("auth-title").textContent = c.title;
+        $("auth-sub").textContent = c.sub;
+        $("btn-submit").textContent = c.btn;
+        $("f-pass").autocomplete = next === "login" ? "current-password" : "new-password";
+        msg("");
+      }
+
+      async function post(url, body) {
+        var r = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body)
+        });
+        var d = await r.json().catch(function () { return {}; });
+        if (!r.ok) throw new Error((d.detail && d.detail.message) || ("HTTP " + r.status));
+        return d;
+      }
+
+      async function submit(e) {
+        e.preventDefault();
+        var username = $("f-user").value.trim();
+        var password = $("f-pass").value;
+        if (!username || !password) { msg("请填写用户名和密码", "err"); return; }
+        var btn = $("btn-submit");
+        btn.disabled = true;
+        msg("处理中…");
+        try {
+          var d = await post("/api/auth/" + (mode === "login" ? "login" : "register"), {
+            username: username, password: password
+          });
+          var extra = d.claimed && d.claimed.sessions
+            ? "，已认领 " + d.claimed.sessions + " 个本机会话" : "";
+          if (mode === "register") {
+            // 新账号从空白工作台开始，不再自动打开注册前的匿名会话
+            try { localStorage.removeItem("dh_agent_thread"); } catch (e) { /* ignore */ }
+          }
+          msg("成功" + extra + "，正在进入工作台…", "ok");
+          setTimeout(function () { window.location.replace("/agent"); }, 600);
+        } catch (err) {
+          msg(err.message || "请求失败", "err");
+          btn.disabled = false;
+        }
+      }
+
+      async function me() {
+        try {
+          var r = await fetch("/api/auth/me");
+          var d = await r.json();
+          if (!d.user) return;
+          var host = $("auth-user");
+          host.hidden = false;
+          host.innerHTML = "当前已登录 <b></b>";
+          host.querySelector("b").textContent = d.user.username;
+          var out = document.createElement("button");
+          out.className = "link";
+          out.type = "button";
+          out.textContent = "退出登录";
+          out.addEventListener("click", async function () {
+            out.disabled = true;
+            try { await post("/api/auth/logout", {}); } catch (e) { /* ignore */ }
+            window.location.reload();
+          });
+          host.appendChild(out);
+        } catch (e) { /* 忽略：未登录时接口也可能不可用 */ }
+      }
+
+      document.querySelectorAll(".auth-tab").forEach(function (b) {
+        b.addEventListener("click", function () { setMode(b.dataset.mode); });
+      });
+      $("auth-form").addEventListener("submit", submit);
+      me();
+    })();
+  </script>
+</body>
+</html>

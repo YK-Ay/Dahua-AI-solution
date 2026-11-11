@@ -37,16 +37,23 @@ class ProductRepo:
         class_names: list[str],
         keywords: list[str],
         model_pattern: str | None = None,
+        require_price: bool = True,
     ) -> dict | None:
-        """在指定类目里挑一个最便宜的匹配型号；找不到返回 None。"""
+        """在指定类目里挑一个最便宜的匹配型号；找不到返回 None。
+
+        require_price=False 时允许返回没有标准价的型号（如拼接单元），
+        用于必须给出型号、价格留待商务询价的场景。
+        """
         if not class_names:
             return None
         placeholders = ",".join("?" * len(class_names))
         sql = (
-            "SELECT model, display_name, price_stand, class_name FROM products "
+            "SELECT model, display_name, price_stand, class_name, year_new FROM products "
             f"WHERE class_name IN ({placeholders}) "
-            "AND price_stand IS NOT NULL AND model IS NOT NULL AND model != '/'"
+            "AND model IS NOT NULL AND model != '/'"
         )
+        if require_price:
+            sql += " AND price_stand IS NOT NULL"
         params: list = list(class_names)
         for kw in keywords:
             sql += " AND display_name LIKE ?"
@@ -54,12 +61,64 @@ class ProductRepo:
         if model_pattern:
             sql += " AND model LIKE ?"
             params.append(f"%{model_pattern}%")
-        sql += " ORDER BY price_stand ASC LIMIT 1"
+        sql += " ORDER BY price_stand IS NULL, price_stand ASC, model ASC LIMIT 1"
 
         row = self.conn.execute(sql, params).fetchone()
         if row is None and model_pattern:
-            return self.pick_model(class_names, keywords, None)
+            return self.pick_model(class_names, keywords, None, require_price)
         return dict(row) if row else None
+
+    def pick_from_boms(
+        self,
+        industry: str | list[str] | None,
+        class_names: list[str],
+        keywords: list[str],
+    ) -> dict | None:
+        """从同行业方案配单里挑被引用最多的型号（方案库参与选型）。
+
+        先按行业（可传多个，用于园区这类跨行业场景）精确匹配；没有命中再放宽
+        到全部行业。返回的 refs 是引用该型号的方案数，scope 标明是否命中同行业，
+        用于在选型依据里如实说明"参考了多少个真实方案配单"。
+        """
+        if not class_names:
+            return None
+        industries = [industry] if isinstance(industry, str) else list(industry or [])
+
+        def query(scoped: bool) -> sqlite3.Row | None:
+            placeholders = ",".join("?" * len(class_names))
+            kw_sql = "".join(" AND p.display_name LIKE ?" for _ in keywords)
+            scope_sql = ""
+            if scoped:
+                scope_sql = " AND b.industry IN (" + ",".join("?" * len(industries)) + ")"
+            sql = (
+                "SELECT p.model, p.display_name, p.price_stand, p.class_name, "
+                "p.year_new, COUNT(DISTINCT bi.scheme_id) AS refs "
+                "FROM bom_items bi "
+                "JOIN boms b ON b.scheme_id = bi.scheme_id "
+                "JOIN products p ON p.model = bi.model "
+                f"WHERE p.class_name IN ({placeholders}) "
+                "AND p.price_stand IS NOT NULL"
+                + kw_sql
+                + scope_sql
+                + " GROUP BY p.model ORDER BY refs DESC, p.year_new DESC, "
+                  "p.price_stand ASC LIMIT 1"
+            )
+            params: list = list(class_names) + [f"%{k}%" for k in keywords]
+            if scoped:
+                params += industries
+            return self.conn.execute(sql, params).fetchone()
+
+        row = query(True) if industries else None
+        scope = "industry"
+        if row is None:
+            row = query(False)
+            scope = "all"
+        if row is None:
+            return None
+        data = dict(row)
+        data["refs"] = int(row["refs"] or 0)
+        data["scope"] = scope
+        return data
 
     def search(
         self,

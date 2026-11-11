@@ -1,6 +1,6 @@
 """Web 层薄封装：把 LangGraph 的 checkpoint / interrupt 变成三个 JSON 动作。
 
-图本身不改（仍只有 build / ask_gap / review / finish / abort 五个节点），
+图本身由主 Agent 调度五个子 Agent（意图识别 / 选型 / 配单 / 方案 / 产物），
 这一层只负责：
   - 全局单例 graph + 同一把锁（SqliteSaver 跨线程复用）
   - start / state / resume 三个动作的状态序列化
@@ -9,14 +9,22 @@
 """
 from __future__ import annotations
 
+import re
 import threading
 import uuid
+from datetime import datetime
 from pathlib import Path
 from urllib.parse import quote
 
 from langgraph.types import Command
 
 from agent import graph as G
+from app.edit import apply_edit
+from app.models import Spec
+from app.pdf import docx_to_pdf
+from app.ppt import render_pptx
+from app.topology import render_topology
+from app.word import render_docx
 
 _lock = threading.RLock()
 _graph = None
@@ -85,6 +93,10 @@ def serialize(state, thread_id: str) -> dict:
         "interrupt": interrupts[0] if interrupts else None,
         "interrupt_type": (interrupts[0].get("type") if interrupts else None),
         "spec": values.get("spec"),
+        "intent": values.get("intent"),
+        "selection": values.get("selection"),
+        "bom": values.get("bom"),
+        "stage": values.get("stage") or "intent",
         "gaps": values.get("gaps") or [],
         "gate_gaps": values.get("gate_gaps") or [],
         "rounds": values.get("rounds") or 0,
@@ -132,6 +144,76 @@ def resume(thread_id: str, answer) -> dict:
     except KeyError as exc:
         raise KeyError("会话不存在或已结束") from exc
     return serialize(state, thread_id)
+
+
+def _safe_name(name: str) -> str:
+    cleaned = re.sub(r'[\\/:*?"<>|\s]+', "_", name).strip("_")
+    return cleaned or "未命名方案"
+
+
+def render_outputs(spec: Spec) -> dict:
+    """按 Spec 重新渲染全部交付物（拓扑简略/详细、Word、PPT）。"""
+    G.EXPORT_DIR.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S%f")[:-3]
+    stem = _safe_name(spec.project.name)
+    png = G.EXPORT_DIR / f"{stem}-{stamp}-拓扑-简略.png"
+    png_detail = G.EXPORT_DIR / f"{stem}-{stamp}-拓扑-详细.png"
+    docx = G.EXPORT_DIR / f"{stem}-{stamp}.docx"
+    pptx = G.EXPORT_DIR / f"{stem}-{stamp}.pptx"
+    render_topology(spec, png, mode="simple")
+    render_topology(spec, png_detail, mode="detailed")
+    render_docx(spec, docx, topology_png=png)
+    render_pptx(spec, pptx)
+    return {"png": str(png), "png_detail": str(png_detail),
+            "docx": str(docx), "pptx": str(pptx)}
+
+
+def edit_outputs(thread_id: str, patch: dict) -> dict:
+    """交付页在线编辑：改路数 / 天数 / 项目名 / 型号 / 数量后重算并重新渲染。"""
+    with _lock:
+        graph = get_graph()
+        snap = graph.get_state(_cfg(thread_id))
+        values = _values_of(snap)
+        if not values:
+            raise KeyError("会话不存在或已过期")
+        if not values.get("spec"):
+            raise ValueError("会话还没有可编辑的 Spec")
+        current = Spec.model_validate(values["spec"])
+        spec = apply_edit(current, values.get("text") or "", patch)
+        outputs = render_outputs(spec)
+        graph.update_state(_cfg(thread_id), {"spec": spec.model_dump(), "outputs": outputs})
+        snap = graph.get_state(_cfg(thread_id))
+    return serialize(snap, thread_id)
+
+
+def export_pdf(thread_id: str) -> tuple[dict, Path]:
+    """把当前 Word 转成 PDF 并写回会话产物清单。"""
+    with _lock:
+        graph = get_graph()
+        snap = graph.get_state(_cfg(thread_id))
+        values = _values_of(snap)
+        outputs = dict(values.get("outputs") or {})
+        docx = outputs.get("docx")
+        if not docx or not Path(docx).is_file():
+            raise KeyError("会话还没有生成 Word 方案")
+        pdf = Path(docx).with_suffix(".pdf")
+        docx_to_pdf(docx, pdf)
+        outputs["pdf"] = str(pdf)
+        graph.update_state(_cfg(thread_id), {"outputs": outputs})
+        snap = graph.get_state(_cfg(thread_id))
+    return serialize(snap, thread_id), pdf
+
+
+def delete_thread(thread_id: str) -> None:
+    """删除某会话的 checkpoint 行（历史列表删除会话时调用）。"""
+    with _lock:
+        graph = get_graph()
+        conn = getattr(graph.checkpointer, "conn", None)
+        if conn is None:
+            return
+        with conn:
+            conn.execute("DELETE FROM writes WHERE thread_id=?", (thread_id,))
+            conn.execute("DELETE FROM checkpoints WHERE thread_id=?", (thread_id,))
 
 
 def reset_graph() -> None:

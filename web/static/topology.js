@@ -39,14 +39,33 @@
     if (category.indexOf("交换机") >= 0 || category === "PoE交换机") return "switch";
     if (category === "NVR" || category.indexOf("录像机") >= 0) return "recorder";
     if (category.indexOf("硬盘") >= 0 || category.indexOf("存储") >= 0) return "disk";
-    if (category === "监视器") return "monitor";
-    if (category.indexOf("平台") >= 0) return "platform";
+    if (category === "监视器" || category.indexOf("拼接屏") >= 0) return "monitor";
+    if (category.indexOf("平台") >= 0 || category.indexOf("解码") >= 0) return "platform";
     return "box";
   }
   function colorOf(category, dashed) { return dashed ? COLORS.box : (COLORS[iconType(category)] || COLORS.box); }
   function truncate(text, limit) {
     text = String(text || "");
     return text.length <= limit ? text : text.slice(0, limit - 1) + "…";
+  }
+  // 按像素宽度估算（中文按 1em、西文按 0.56em），避免固定字数截断造成溢出/重叠
+  function measure(text, fs) {
+    var w = 0;
+    text = String(text == null ? "" : text);
+    for (var i = 0; i < text.length; i++) {
+      w += text.charCodeAt(i) < 128 ? fs * 0.56 : fs;
+    }
+    return w;
+  }
+  function fit(text, maxPx, fs) {
+    text = String(text == null ? "" : text);
+    if (!maxPx || measure(text, fs) <= maxPx) return text;
+    var out = "";
+    for (var i = 0; i < text.length; i++) {
+      if (measure(out + text[i] + "…", fs) > maxPx) break;
+      out += text[i];
+    }
+    return out + "…";
   }
   function intentMap(spec) {
     var m = {};
@@ -58,7 +77,7 @@
     var g =
       '<g transform="translate(' + cx + "," + cy + ')">' +
       '<rect x="' + (-s * 0.62) + '" y="' + (-s * 0.48) + '" width="' + s * 1.24 +
-      '" height="' + s * 0.96 + '" rx="7" fill="rgba(255,255,255,0.04)" stroke="' + color + '" stroke-width="2"/>';
+      '" height="' + s * 0.96 + '" rx="7" fill="#ffffff" stroke="' + color + '" stroke-width="2"/>';
     if (type === "camera") {
       g +=
         '<circle cx="0" cy="0" r="' + s * 0.34 + '" fill="none" stroke="' + color + '" stroke-width="2.4"/>' +
@@ -77,13 +96,13 @@
         '<circle cx="' + s * 0.42 + '" cy="' + -s * 0.28 + '" r="' + s * 0.06 + '" fill="' + color + '"/>';
     } else if (type === "disk") {
       g +=
-        '<rect x="' + -s * 0.5 + '" y="' + -s * 0.32 + '" width="' + s * 1.0 + '" height="' + s * 0.64 + '" rx="' + s * 0.1 + '" fill="rgba(255,255,255,0.02)" stroke="' + color + '" stroke-width="2"/>' +
+        '<rect x="' + -s * 0.5 + '" y="' + -s * 0.32 + '" width="' + s * 1.0 + '" height="' + s * 0.64 + '" rx="' + s * 0.1 + '" fill="#ffffff" stroke="' + color + '" stroke-width="2"/>' +
         '<line x1="' + -s * 0.5 + '" y1="' + -s * 0.1 + '" x2="' + s * 0.5 + '" y2="' + -s * 0.1 + '" stroke="' + color + '" stroke-width="1.5"/>' +
         '<line x1="' + -s * 0.5 + '" y1="' + s * 0.1 + '" x2="' + s * 0.5 + '" y2="' + s * 0.1 + '" stroke="' + color + '" stroke-width="1.5"/>' +
         '<circle cx="' + s * 0.22 + '" cy="0" r="' + s * 0.12 + '" fill="' + color + '"/>';
     } else if (type === "monitor") {
       g +=
-        '<rect x="' + -s * 0.56 + '" y="' + -s * 0.46 + '" width="' + s * 1.12 + '" height="' + s * 0.72 + '" rx="6" fill="rgba(255,255,255,0.03)" stroke="' + color + '" stroke-width="2"/>' +
+        '<rect x="' + -s * 0.56 + '" y="' + -s * 0.46 + '" width="' + s * 1.12 + '" height="' + s * 0.72 + '" rx="6" fill="#ffffff" stroke="' + color + '" stroke-width="2"/>' +
         '<rect x="' + -s * 0.42 + '" y="' + -s * 0.3 + '" width="' + s * 0.84 + '" height="' + s * 0.42 + '" rx="2" fill="' + color + '" opacity="0.18"/>' +
         '<rect x="' + -s * 0.12 + '" y="' + s * 0.26 + '" width="' + s * 0.24 + '" height="' + s * 0.16 + '" fill="' + color + '"/>' +
         '<rect x="' + -s * 0.28 + '" y="' + s * 0.4 + '" width="' + s * 0.56 + '" height="' + s * 0.09 + '" rx="2" fill="' + color + '"/>';
@@ -108,15 +127,15 @@
     { key: "前端", cats: ["网络摄像机"] },
     { key: "传输", cats: ["PoE交换机", "交换机", "数通产品"] },
     { key: "存储", cats: ["NVR", "通用存储录像机", "机械硬盘"] },
-    { key: "平台", cats: ["综合平台", "综合管理平台"] },
-    { key: "显示", cats: ["监视器"] },
+    { key: "平台", cats: ["综合平台", "综合管理平台", "平台授权", "平台服务器"] },
+    { key: "显示", cats: ["监视器", "拼接屏", "拼接支架", "解码器"] },
   ];
 
   function renderSimple(container, spec) {
     if (!container) return;
     spec = spec || {};
     var W = 1180, MARGIN_X = 60, LABEL_W = 168, TOP0 = 150, BAND_GAP = 52;
-    var CARD_H = 112, CARD_GAP = 18, CARD_W_MAX = 224;
+    var CARD_H = 128, CARD_GAP = 20, CARD_W_MAX = 280;
     var areaX = MARGIN_X + LABEL_W;
     var areaW = W - MARGIN_X - areaX;
     var im = intentMap(spec);
@@ -164,21 +183,22 @@
       ".topo-card{transition:transform .18s ease, filter .18s ease;}" +
       ".topo-card:hover{transform:translateY(-3px);}" +
       ".topo-card:hover .tc-box{stroke-width:2.4;filter:url(#topoGlow);}" +
-      ".tc-title{font:600 13px/1.2 'Microsoft YaHei','PingFang SC',sans-serif;}" +
-      ".tc-model{font:600 12px/1.2 Consolas,'JetBrains Mono',monospace;}" +
-      ".tc-sub{font:400 10.5px/1.2 'Microsoft YaHei',sans-serif;}" +
+      ".tc-title{font:600 13px/1.2 'Microsoft YaHei','PingFang SC',sans-serif;fill:#1a1d24;}" +
+      ".tc-model{font:600 12px/1.2 Consolas,'JetBrains Mono',monospace;fill:#4a5160;}" +
+      ".tc-sub{font:400 10.5px/1.2 'Microsoft YaHei',sans-serif;fill:#6b7280;}" +
       ".tc-intent{font:700 10.5px/1.2 'Microsoft YaHei',sans-serif;}" +
       ".tc-loc{font:700 11px/1.2 'Microsoft YaHei',sans-serif;}" +
-      ".tc-qty{font:700 13px/1 Consolas,monospace;}" +
-      ".topo-head{font:800 15px/1 'Microsoft YaHei',sans-serif;fill:#ffb4ba;letter-spacing:.08em;}" +
-      ".topo-head-sub{font:500 11px/1 Consolas,monospace;fill:#8a94a6;}" +
+      ".tc-qty{font:700 13px/1 Consolas,monospace;fill:#ffffff;}" +
+      ".topo-head{font:800 15px/1 'Microsoft YaHei',sans-serif;fill:#ffffff;letter-spacing:.08em;}" +
+      ".topo-head-sub{font:500 11px/1 Consolas,monospace;fill:rgba(255,255,255,0.82);}" +
       ".topo-flow{stroke-dasharray:8 12;animation:topoDash 1.1s linear infinite;}" +
       "@keyframes topoDash{to{stroke-dashoffset:-20;}}" +
       "</style></defs>";
 
-    svg += '<text x="' + (W / 2) + '" y="44" text-anchor="middle" font="800 32px sans-serif" fill="#f3f5f9">系统拓扑图（简略）</text>';
+    svg += '<rect x="0" y="0" width="' + W + '" height="' + H + '" fill="#ffffff"/>';
+    svg += '<text x="' + (W / 2) + '" y="44" text-anchor="middle" font="800 32px sans-serif" fill="#1a1d24">系统拓扑图（简略）</text>';
     var sub = (spec.project ? spec.project.name : "方案") + " · 前端 → 存储 → 平台 → 显示";
-    svg += '<text x="' + (W / 2) + '" y="78" text-anchor="middle" font="500 16px sans-serif" fill="#8a94a6">' + esc(sub) + "</text>";
+    svg += '<text x="' + (W / 2) + '" y="78" text-anchor="middle" font="500 16px sans-serif" fill="#6b7280">' + esc(sub) + "</text>";
     svg += '<line x1="' + MARGIN_X + '" y1="112" x2="' + (W - MARGIN_X) + '" y2="112" stroke="' + RED + '" stroke-width="3"/>';
 
     var centerX = areaX + areaW / 2;
@@ -186,7 +206,7 @@
       svg += '<rect x="' + MARGIN_X + '" y="' + B.top + '" width="' + (W - 2 * MARGIN_X) + '" height="' + B.h +
         '" rx="14" fill="' + PANEL + '" stroke="' + PANEL_LINE + '" stroke-width="1"/>';
       svg += '<rect x="' + MARGIN_X + '" y="' + B.top + '" width="' + LABEL_W + '" height="' + B.h +
-        '" rx="14" fill="rgba(36,18,20,0.92)" stroke="' + RED + '" stroke-width="2"/>';
+        '" rx="14" fill="' + RED + '" stroke="' + "#a30a14" + '" stroke-width="2"/>';
       svg += '<rect x="' + MARGIN_X + '" y="' + B.top + '" width="5" height="' + B.h + '" rx="2" fill="' + RED + '"/>';
       svg += '<text class="topo-head" x="' + (MARGIN_X + LABEL_W / 2) + '" y="' + (B.top + B.h / 2 - 6) + '" text-anchor="middle">' + esc(B.key) + " 层</text>";
       svg += '<text class="topo-head-sub" x="' + (MARGIN_X + LABEL_W / 2) + '" y="' + (B.top + B.h / 2 + 16) + '" text-anchor="middle">' + B.items.length + " 类设备</text>";
@@ -209,34 +229,51 @@
           var cy = ry;
           var icon = iconType(it.category);
           var col = it.dashed ? COLORS.box : colorOf(it.category);
-          var boxFill = it.dashed ? "rgba(40,32,34,0.5)" : "rgba(18,21,28,0.92)";
+          var boxFill = it.dashed ? "#f2f3f5" : "#ffffff";
           var dashAttr = it.dashed ? ' stroke-dasharray="6 5"' : "";
           svg += '<g class="topo-card">';
           svg += '<title>' + esc(it.category) + (it.dashed ? "（待选型）" : "　地点 " + esc(it.scene) + "　型号 " + esc(it.model) + "　×" + it.qty) + "</title>";
           svg += '<rect class="tc-box" x="' + cardX + '" y="' + (cy - CARD_H / 2) + '" width="' + cardW + '" height="' + CARD_H +
             '" rx="12" fill="' + boxFill + '" stroke="' + col + '" stroke-width="1.6"' + dashAttr + "/>";
           svg += '<rect x="' + cardX + '" y="' + (cy - CARD_H / 2) + '" width="4" height="' + CARD_H + '" rx="2" fill="' + col + '"/>';
-          svg += iconSVG(icon, cardX + 36, cy, 26, col);
-          var tx = cardX + 70;
-          svg += '<text class="tc-title" x="' + tx + '" y="' + (cy - 26) + '">' + esc(truncate(it.category, 9)) + "</text>";
+          svg += iconSVG(icon, cardX + 38, cy, 26, col);
+          var tx = cardX + 72;
+          var right = cardX + cardW - 14;
+          var textW = right - tx;
+          // 第一行：类别 + 数量胶囊（胶囊占右侧固定宽度，标题据此让位）
+          var qtyW = it.qty > 0 && !it.dashed ? 48 : 0;
+          svg += '<text class="tc-title" x="' + tx + '" y="' + (cy - 40) + '">' +
+            esc(fit(it.category, textW - qtyW - 6, 13)) + "</text>";
+          if (qtyW) {
+            var qx = right - qtyW, qy = cy - 53;
+            svg += '<rect x="' + qx + '" y="' + qy + '" width="' + qtyW + '" height="22" rx="11" fill="' + col + '"/>';
+            svg += '<text class="tc-qty" x="' + (qx + qtyW / 2) + '" y="' + (qy + 15.5) + '" text-anchor="middle">×' + it.qty + "</text>";
+          }
           if (!it.dashed) {
-            svg += '<text class="tc-model" x="' + tx + '" y="' + (cy - 6) + '">' + esc(truncate(it.model, 18)) + "</text>";
-            svg += '<text class="tc-sub" x="' + tx + '" y="' + (cy + 12) + '">' + esc(truncate(it.display_name, 16)) + "</text>";
-            if (it.intent) {
-              svg += '<text class="tc-intent" x="' + tx + '" y="' + (cy + 30) + '" fill="' + RED2 + '">目标：' + esc(truncate(it.intent, 14)) + "</text>";
-            }
-            if (it.qty > 0) {
-              var bx = cardX + cardW - 30, by = cy - CARD_H / 2 + 16;
-              svg += '<circle cx="' + bx + '" cy="' + by + '" r="15" fill="' + col + '"/>';
-              svg += '<text class="tc-qty" x="' + bx + '" y="' + (by + 4) + '" text-anchor="middle">×' + it.qty + "</text>";
+            svg += '<text class="tc-model" x="' + tx + '" y="' + (cy - 18) + '">' +
+              esc(fit(it.model, textW, 12)) + "</text>";
+            svg += '<text class="tc-sub" x="' + tx + '" y="' + (cy + 2) + '">' +
+              esc(fit(it.display_name, textW, 10.5)) + "</text>";
+            // 底部信息条：左侧场景胶囊，右侧目标；双方按剩余宽度各自截断
+            var hasScene = !!it.scene, hasIntent = !!it.intent;
+            if (hasScene || hasIntent) {
+              var sceneTxt = hasScene ? fit(it.scene, textW * 0.52 - 16, 10.5) : "";
+              var sceneW = sceneTxt ? measure(sceneTxt, 10.5) + 18 : 0;
+              var intentTxt = "";
+              if (hasIntent) {
+                var rest = textW - sceneW - (sceneW ? 8 : 0);
+                intentTxt = fit("目标 · " + it.intent, rest, 10.5);
+              }
+              if (sceneW) {
+                svg += '<rect x="' + tx + '" y="' + (cy + 20) + '" width="' + sceneW + '" height="20" rx="10" fill="#fdecee"/>';
+                svg += '<text class="tc-loc" x="' + (tx + 9) + '" y="' + (cy + 34) + '" fill="#a30a14">' + esc(sceneTxt) + "</text>";
+              }
+              if (intentTxt) {
+                svg += '<text class="tc-loc" x="' + right + '" y="' + (cy + 34) + '" text-anchor="end" fill="#a30a14">' + esc(intentTxt) + "</text>";
+              }
             }
           } else {
-            svg += '<text class="tc-sub" x="' + tx + '" y="' + (cy + 4) + '">待选型</text>';
-          }
-          // 使用地点小标签（右上角）
-          if (it.scene && !it.dashed) {
-            var loc = esc(truncate("📍" + it.scene, 12));
-            svg += '<text class="tc-loc" x="' + (cardX + cardW - 10) + '" y="' + (cy - CARD_H / 2 + 16) + '" text-anchor="end" fill="#ff8a8a">📍' + esc(truncate(it.scene, 10)) + "</text>";
+            svg += '<text class="tc-sub" x="' + tx + '" y="' + (cy + 2) + '">待选型</text>';
           }
           svg += "</g>";
         }
@@ -317,7 +354,7 @@
     svg += '<text x="' + (W / 2) + '" y="40" text-anchor="middle" font="800 30px sans-serif" fill="#1a1d24">系统拓扑图（详细 · 逻辑连线）</text>';
     var pname = (spec.project ? spec.project.name : "方案") + " · " + (spec.project ? spec.project.industry : "");
     svg += '<text x="' + (W / 2) + '" y="74" text-anchor="middle" font="500 15px sans-serif" fill="#8a94a6">' + esc(pname) + " · 全配单互连示意</text>";
-    svg += '<line x1="' + M + '" y1="110" x2="' + (W - M) + '" y2="110" stroke="' + RED + '" stroke-width="3"/>";
+    svg += '<line x1="' + M + '" y1="110" x2="' + (W - M) + '" y2="110" stroke="' + RED + '" stroke-width="3"/>';
 
     // 场景节点
     var sy = sceneTop, sceneCenters = [];
@@ -386,9 +423,11 @@
       s += '<rect x="' + box.x + '" y="' + box.y + '" width="' + box.w + '" height="' + box.h + '" rx="14" fill="#ffffff" stroke="' + color + '" stroke-width="2"/>';
       s += '<rect x="' + box.x + '" y="' + box.y + '" width="6" height="' + box.h + '" rx="3" fill="' + color + '"/>';
       s += iconSVG(iconType(title.indexOf("摄像机") >= 0 ? "camera" : (title.indexOf("交换机") >= 0 ? "switch" : (title.indexOf("NVR") >= 0 ? "recorder" : (title.indexOf("硬盘") >= 0 ? "disk" : (title.indexOf("平台") >= 0 ? "platform" : (title.indexOf("监视器") >= 0 ? "monitor" : "box")))))), box.x + 40, box.y + box.h / 2, 24, color);
-      s += '<text class="dt-title" x="' + (box.x + 74) + '" y="' + (box.y + 26) + '" fill="' + color + '">' + esc(truncate(title, 14)) + "</text>";
-      s += '<text class="dt-model" x="' + (box.x + 74) + '" y="' + (box.y + 52) + '">' + esc(truncate(model, 20)) + "</text>";
-      s += '<text class="dt-sub" x="' + (box.x + 74) + '" y="' + (box.y + 74) + '">' + esc(truncate(sub, 22)) + "</text>";
+      var titleW = box.w - 74 - (qty > 0 ? 62 : 16);
+      var bodyW = box.w - 74 - 18;
+      s += '<text class="dt-title" x="' + (box.x + 74) + '" y="' + (box.y + 26) + '" fill="' + color + '">' + esc(fit(title, titleW, 15)) + "</text>";
+      s += '<text class="dt-model" x="' + (box.x + 74) + '" y="' + (box.y + 52) + '">' + esc(fit(model, bodyW, 12)) + "</text>";
+      s += '<text class="dt-sub" x="' + (box.x + 74) + '" y="' + (box.y + 74) + '">' + esc(fit(sub, bodyW, 11)) + "</text>";
       if (qty > 0) {
         s += '<circle cx="' + (box.x + box.w - 26) + '" cy="' + (box.y + 24) + '" r="16" fill="' + color + '"/>';
         s += '<text class="dt-qty" x="' + (box.x + box.w - 26) + '" y="' + (box.y + 29) + '" text-anchor="middle" fill="#fff">×' + qty + "</text>";

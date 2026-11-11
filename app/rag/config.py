@@ -23,6 +23,10 @@ LOW_RELEVANCE = float(os.getenv("RAG_LOW_RELEVANCE", "0.006"))  # 低于此分�
 MIN_HITS = int(os.getenv("RAG_MIN_HITS", "1"))            # 至少要有词面重叠
 DEFAULT_TOP_K = int(os.getenv("RAG_TOP_K", "8"))
 
+# ---- 选型：RAG 候选的 LLM 复排 ----
+# 默认关闭：选型是可审计的确定性链路，开启后 LLM 也只在 RAG 候选内做选择。
+SELECTION_LLM = os.getenv("SELECTION_LLM", "0").strip().lower() in ("1", "true", "yes", "on")
+
 # ---- 检索子集路由（防竞品资料给大华背书）----
 SUBSETS = {
     # 出大华主方案：只用大华文档、官方配单、产品库、官网案例

@@ -40,6 +40,7 @@ class Device(BaseModel):
     scene: str = ""
     display_name: str = ""
     unit_price: float | None = None
+    reason: str = ""          # 选型依据（场景/点位/配单来源），写入审阅页与 Word
 
 
 class Storage(BaseModel):

@@ -11,7 +11,7 @@ from agent import graph as G  # noqa: E402
 from agent import parser as P  # noqa: E402
 from app.builder import SpecGateError, match_scenes  # noqa: E402
 
-ORAL = "某小区地下车库要看清车牌，宿舍楼和电梯里也要装监控，存储30天"
+ORAL = "某小区地库要看清车牌，档案室和楼梯间也要装监控，存储30天"
 DETAILED = "某园区：周界20路，出入口10路，存储30天。"
 NUM = re.compile(r"\d+")
 
@@ -40,11 +40,12 @@ class NormalizeTest(OnlineMixin, unittest.TestCase):
         return P.parse_requirement(text)
 
     def test_oral_scenes_are_written_back(self):
-        r = self._parse({"scenes": ["停车场", "室内区域", "电梯轿厢"],
+        r = self._parse({"scenes": ["停车场", "室内区域"],
                          "project_name": "某小区监控项目", "industry": "智慧园区"})
         self.assertEqual(r["engine"], "llm")
-        self.assertEqual(r["normalized_scenes"], ["停车场", "室内区域"])
-        self.assertIn("识别场景：停车场、室内区域", r["text"])
+        # 「地库」规则引擎已认识，「档案室/楼梯间」要靠 LLM 补写成室内区域
+        self.assertEqual(r["normalized_scenes"], ["室内区域"])
+        self.assertIn("识别场景：室内区域", r["text"])
         # 补写内容绝不能带数字，原文数字保持原样
         appended = r["text"].split("识别场景：")[-1]
         self.assertEqual(NUM.findall(appended), [])
@@ -55,9 +56,9 @@ class NormalizeTest(OnlineMixin, unittest.TestCase):
         self.assertIn("室内区域", r["scenes"])
 
     def test_scene_whitelist_and_digit_recheck(self):
-        r = self._parse({"scenes": ["停车场", "火星基地", "99号区域"],
+        r = self._parse({"scenes": ["室内区域", "火星基地", "99号区域"],
                          "project_name": "某小区99号楼", "industry": "智慧交管"})
-        self.assertEqual(r["normalized_scenes"], ["停车场"])
+        self.assertEqual(r["normalized_scenes"], ["室内区域"])
         self.assertIn("火星基地", r["dropped_scenes"])
         self.assertIsNone(r["project_name"])          # 含原文没有的数字，整个字段作废
         self.assertNotIn("智慧交管", r["text"])        # 行业只提示，不写回原文
@@ -111,6 +112,36 @@ class CnNumberTest(unittest.TestCase):
         spec = build_spec(r["text"])
         self.assertEqual(sum(x.lanes for x in spec.requirements), 100)
         self.assertEqual(spec.storage.retention_days, 30)
+
+
+class SceneCoverageTest(unittest.TestCase):
+    """场景词覆盖与路数归属的回归：教学楼/食堂/车库/操场此前会被丢掉。"""
+
+    def test_school_scenes_and_lanes(self):
+        from app.builder import build_spec
+        spec = build_spec("某学校项目：教学楼60路，食堂15路，操场40路，存储30天")
+        got = {r.target: r.lanes for r in spec.requirements}
+        self.assertEqual(got.get("室内区域"), 75)      # 教学楼 60 + 食堂 15
+        self.assertEqual(got.get("公共区域"), 40)      # 操场
+        self.assertEqual(sum(got.values()), 115)
+
+    def test_garage_maps_to_parking(self):
+        from app.builder import build_spec
+        spec = build_spec("某小区地下车库要看清车牌，电梯里也要装监控，存储30天")
+        self.assertIn("停车场", [r.target for r in spec.requirements])
+
+    def test_public_area_kept_only_with_explicit_lanes(self):
+        from app.builder import build_spec
+        with_lanes = build_spec("某园区：周界80路，公共区域40路，存储30天")
+        self.assertIn("公共区域", [r.target for r in with_lanes.requirements])
+        without = build_spec("某园区：周界80路，存储30天")
+        self.assertNotIn("公共区域", [r.target for r in without.requirements])
+
+    def test_same_scene_lanes_are_summed(self):
+        from app.builder import build_spec
+        spec = build_spec("某办公楼宇：谈话室20路，走廊30路，大厅20路，存储90天")
+        got = {r.target: r.lanes for r in spec.requirements}
+        self.assertEqual(got.get("室内区域"), 70)
 
 
 class GapPhraseTest(unittest.TestCase):

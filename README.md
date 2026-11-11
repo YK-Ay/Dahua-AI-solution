@@ -51,7 +51,11 @@ python -m uvicorn app.api:app --host 127.0.0.1 --port 8080
 - `data/`：运行产物、导出的方案文档、抓取的原始页面、QA 截图、断点文件；
 - `web/static/img/`：从厂商站点抓取的产品缩略图。代码已使用 `COALESCE(img_local, img_url)` 做在线回退，缺少本地图片不会导致启动失败。
 
-首次运行可用 `config/init_db.py` 与 `db/schema.sql` 建立空表结构；完整知识库需按采集脚本自行采集或恢复本地备份。空库状态下页面可启动，但知识库、竞品对比等功能需要数据才能返回完整结果。
+首次运行可用 `config/init_db.py` 与 `db/schema.sql` 建立空表结构，但**空表并不足以让系统正常工作**：
+
+实测干净 clone 后启动服务，五个页面（`/agent`、`/kb`、`/rag`、`/compare` 等）能正常打开，但 `/api/kb/stats` 直接返回 500、知识库/竞品/Agent 状态等接口会请求挂起。原因只是缺少 `db/dahua_kb.sqlite`，不是代码缺陷——把该文件（约 23 MB）放回 `db/` 目录后，全部接口立即恢复 200。
+
+因此，在新环境部署时请从本地备份恢复 `db/dahua_kb.sqlite`，或按 `scraper/` 下的采集脚本重新采集。该文件因体积与数据合规原因不随仓库分发。
 
 ## 测试
 
