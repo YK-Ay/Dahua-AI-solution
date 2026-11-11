@@ -139,7 +139,7 @@ class SceneCoverageTest(unittest.TestCase):
 
     def test_same_scene_lanes_are_summed(self):
         from app.builder import build_spec
-        spec = build_spec("某办公楼宇：谈话室20路，走廊30路，大厅20路，存储90天")
+        spec = build_spec("某园区办公楼：会议室20路，走廊30路，大厅20路，存储90天")
         got = {r.target: r.lanes for r in spec.requirements}
         self.assertEqual(got.get("室内区域"), 70)
 

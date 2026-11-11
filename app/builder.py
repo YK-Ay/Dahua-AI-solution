@@ -188,7 +188,7 @@ def explicit_lanes(text: str, scenes: list[dict]) -> dict[str, int]:
     """把「场景词 + 数字」短语里的路数归给最近的那个场景，同一场景多处出现累加。
 
     只认数字前 8 个字内、且中间没有标点的最近场景词：
-    「园区周界 80 路」归周界而不是园区；「办案区周界 40 路」也不会同时算给办案区和周界。
+    「园区周界 80 路」归周界而不是园区；「办公区周界 40 路」也不会同时算给室内区域和周界。
     """
     hits: list[tuple[int, int, str]] = []
     for rule in scenes:
