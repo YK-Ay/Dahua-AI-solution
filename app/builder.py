@@ -24,80 +24,23 @@ from .models import (
 )
 from .platform import build_platform
 from .selection import select_camera
+from .taxonomy import (
+    FALLBACK_SCENE,
+    GENERIC_CAMERA_CLASSES,
+    INDUSTRIES as _INDUSTRIES,
+    all_scenes,
+    industry_of,
+    scene as scene_def,
+)
+
+# 场景表数据在 app/taxonomy.py；这里保留 SCENE_RULES 这个名字给解析层与测试用
+SCENE_RULES = all_scenes()
 
 DEFAULT_LANES = 50
 DEFAULT_RETENTION_DAYS = 30
 NVR_CHANNELS = 32
 DISK_CAPACITY_TB = 8
 SWITCH_PORTS = 24
-
-# 场景规则：顺序即优先级；关键词命中即视为该场景存在
-SCENE_RULES = [
-    {
-        "name": "周界围墙",
-        "keys": ["周界", "围墙", "边界"],
-        "intent": "入侵检测",
-        "level": "高",
-        "bitrate": 4.0,
-        "camera_keywords": ["枪型", "400万"],
-        "camera_classes": ["网络摄像机"],
-    },
-    {
-        "name": "出入口",
-        "keys": ["出入口", "大门", "门禁", "闸机"],
-        "intent": "人车通行管理",
-        "level": "高",
-        "bitrate": 6.0,
-        "camera_keywords": ["枪型", "400万"],
-        "camera_classes": ["网络摄像机"],
-    },
-    {
-        "name": "主干道",
-        "keys": ["主干道", "道路", "路面", "车道", "卡口"],
-        "intent": "车辆识别",
-        "level": "中",
-        "bitrate": 6.0,
-        "camera_keywords": ["球机", "400万"],
-        "camera_classes": ["分销球机", "网络摄像机"],
-    },
-    {
-        "name": "电梯轿厢",
-        "keys": ["电梯", "轿厢", "入梯"],
-        "intent": "电瓶车入梯检测",
-        "level": "中",
-        "bitrate": 2.0,
-        "camera_keywords": ["半球", "400万"],
-        "camera_classes": ["网络摄像机"],
-    },
-    {
-        "name": "室内区域",
-        "keys": ["室内", "大厅", "走廊", "办公", "教室", "会议室",
-                 "教学楼", "宿舍", "食堂", "谈话室", "机房", "办案区"],
-        "intent": "人员活动监控",
-        "level": "中",
-        "bitrate": 2.0,
-        "camera_keywords": ["海螺", "400万"],
-        "camera_classes": ["网络摄像机"],
-    },
-    {
-        "name": "停车场",
-        "keys": ["停车场", "车棚", "车位", "车库", "地库"],
-        "intent": "车辆停放管理",
-        "level": "中",
-        "bitrate": 4.0,
-        "camera_keywords": ["球机", "400万"],
-        "camera_classes": ["分销球机", "网络摄像机"],
-    },
-    {
-        "name": "公共区域",
-        "keys": ["公共区域", "广场", "园区", "小区", "操场"],
-        "intent": "公共区域视频监控",
-        "level": "中",
-        "bitrate": 4.0,
-        "camera_keywords": ["枪型", "400万"],
-        "camera_classes": ["网络摄像机"],
-    },
-]
 
 
 class SpecGateError(Exception):
@@ -108,11 +51,8 @@ class SpecGateError(Exception):
         super().__init__("；".join(gaps))
 
 
-# 方案库行业口径：53 个配单只覆盖 20 个行业，园区/交管这类统称需要映射后才命中
-BOM_INDUSTRY_MAP = {
-    "智慧园区": ["工厂园区", "小区社区", "景区场馆", "商业综合体"],
-    "智慧交管": ["智能交通", "出入口"],
-}
+# 方案库行业口径：53 个配单只覆盖 20 个行业，行业统称需要映射后才命中
+BOM_INDUSTRY_MAP = {name: spec["bom_industries"] for name, spec in _INDUSTRIES.items()}
 
 # 显示层分级：(总路数上限, 列, 行)
 DISPLAY_TIERS = [(16, 1, 1), (48, 2, 2), (128, 3, 3), (10 ** 9, 4, 3)]
@@ -151,26 +91,36 @@ def _pick_decoder(repo: ProductRepo, screens: int) -> dict | None:
 
 
 def detect_industry(text: str) -> tuple[str, list[str]]:
-    if any(k in text for k in ["交管", "交通", "道路", "交警", "卡口"]):
-        industry = "智慧交管"
-    elif any(k in text for k in ["校园", "学校", "中学", "小学", "大学", "校区", "教室", "宿管"]):
-        industry = "智慧校园"
-    else:
-        industry = "智慧园区"
-    tags = []
-    if any(k in text for k in ["小区", "社区", "物业"]):
-        tags.append("小区社区")
+    """按加权关键词判行业；识别不出来时回落默认行业并交给 analyze 记缺口。"""
+    industry, _info = industry_of(text)
+    tags = ["小区社区"] if industry == "智慧社区" else []
     return industry, tags
 
 
-def match_scenes(text: str) -> list[dict]:
-    matched = [r for r in SCENE_RULES if any(k in text for k in r["keys"])]
+def match_scenes(text: str, industry: str | None = None) -> list[dict]:
+    """行业感知的场景匹配。
+
+    - 行业专属场景只在对应行业下参与匹配，避免「化工园区」把电力场景带进来；
+    - 更具体的场景可压掉泛化场景（如 输电线路监测 压掉 周界围墙）；
+    - 兜底场景（公共区域）只有在原文明确给了点位数时才保留，避免抢路数。
+    """
+    if industry is None:
+        industry, _ = industry_of(text)
+    matched = [
+        r for r in SCENE_RULES
+        if any(k in text for k in r["keys"])
+        and (not r["industries"] or industry in r["industries"])
+    ]
+    names = {r["name"] for r in matched}
+    dropped: set[str] = set()
+    for rule in matched:
+        dropped.update(s for s in rule["suppresses"] if s in names)
+    matched = [r for r in matched if r["name"] not in dropped]
     if len(matched) > 1:
-        # 公共区域是兜底场景：「园区/小区」这类字眼经常只是地点修饰，
-        # 只有原文明确给了它的点位数才保留，避免抢走别的场景的需求
         explicit = explicit_lanes(text, matched)
-        matched = [r for r in matched if r["name"] != "公共区域" or explicit.get("公共区域")]
-    return matched or [SCENE_RULES[-1]]
+        matched = [r for r in matched
+                   if not r["fallback_only_with_lanes"] or explicit.get(r["name"])]
+    return matched or [scene_def(FALLBACK_SCENE)]
 
 
 def _first_int(pattern: str, text: str) -> int | None:
@@ -338,14 +288,20 @@ def analyze(
     retention_days: int | None = None,
 ) -> Plan:
     """意图识别：行业路由、场景识别、路数分配，产出结构化建设意图。"""
-    industry, tags = detect_industry(text)
+    industry, info = industry_of(text)
+    tags = ["小区社区"] if industry == "智慧社区" else []
     industries = bom_industries(industry, tags)
-    scenes = match_scenes(text)
+    scenes = match_scenes(text, industry)
 
     parsed_total = _first_int(r"(\d+)\s*(?:路|个点位|台摄像机|摄像机|点位|个监控)", text)
     total = lanes or parsed_total or DEFAULT_LANES
     gaps: list[str] = []
     assumptions = ["码流按场景经验值估算，交付前需按实际设备型号核对"]
+    if info["fallback"]:
+        gaps.append(
+            f"需求未体现行业特征，已按「{industry}」通用口径测算；"
+            "如属电力、交通、化工、医疗等专业行业，请补充行业与场景"
+        )
     if not lanes and not parsed_total:
         gaps.append(f"需求未写点位数，按默认 {DEFAULT_LANES} 路估算（可通过 --lanes 调整）")
 
@@ -383,43 +339,91 @@ def analyze(
                 assumptions=assumptions)
 
 
+def _pick_by_classes(
+    repo: ProductRepo,
+    classes: list[str],
+    keywords: list[str],
+    industries: list[str],
+    require_price: bool,
+) -> tuple[dict | None, str]:
+    """按类目优先级依次取型号：先方案库配单，再产品库直配。
+
+    类目顺序即优先级，所以「测温型枪机 → 通用枪机」排在前面的
+    行业专属机型会先被选中，选不到才落到通用类目。
+    """
+    for cls in classes:
+        hit = repo.pick_from_boms(industries, [cls], keywords)
+        if hit and hit.get("price_stand") is not None:
+            return hit, "方案库配单"
+        hit = repo.pick_model([cls], keywords, require_price=require_price)
+        if hit:
+            return hit, "产品库类目"
+    return None, ""
+
+
 def select_cameras(repo: ProductRepo, plan: Plan) -> list[Device]:
-    """选型 Agent：每个场景按 RAG 案例 → 方案配单 → 产品库规则选摄像机。"""
+    """选型 Agent：通用场景走 RAG，行业专属场景走类目优先级 + 缺货策略。"""
     devices: list[Device] = []
     for req in plan.requirements:
-        rule = next(r for r in plan.scenes if r["name"] == req.target)
-        sel = select_camera(
-            repo, req.target, intent=req.intent, industries=plan.industries,
-            classes=rule["camera_classes"], keywords=rule["camera_keywords"],
-        )
-        if sel:
-            p = sel["product"]
-            refs = sel["refs"]
-            basis = sel["basis"]
-        else:
-            p = repo.pick_from_boms(plan.industries, rule["camera_classes"],
-                                    rule["camera_keywords"])
-            refs = p["refs"] if p else 0
+        rule = scene_def(req.target)
+        classes = rule["camera_classes"]
+        keywords = rule["camera_keywords"]
+        require_price = rule["require_price"]
+        generic = set(classes) <= GENERIC_CAMERA_CLASSES
+
+        p: dict | None = None
+        refs = 0
+        basis = ""
+        if generic:
+            sel = select_camera(
+                repo, rule["rag_family"] or req.target, intent=req.intent,
+                industries=plan.industries, classes=classes, keywords=keywords,
+            )
+            if sel:
+                p = sel["product"]
+                refs = sel["refs"]
+                basis = sel["basis"]
+
+        if p is None:
+            p, where = _pick_by_classes(repo, classes, keywords,
+                                        plan.industries, require_price)
+            if p:
+                basis = f"{where}按类目匹配（{'/'.join(classes)}）"
+
+        # 强专属场景：拿到通用机型等同于没找到，交给缺货策略处理
+        if p is not None and rule["exclusive"] and p.get("class_name") in GENERIC_CAMERA_CLASSES:
+            p = None
+
+        degraded = ""
+        if p is None:
+            if rule["degrade"] == "report":
+                raise SpecGateError([
+                    f"「{req.target}」需要行业专属设备（{'/'.join(classes)}），"
+                    "产品库中暂无可报价型号；该场景不做通用设备替代，请人工确认型号"
+                ])
+            fb_classes = [c for c in classes if c in GENERIC_CAMERA_CLASSES] or ["网络摄像机"]
+            p = repo.pick_model(fb_classes, ["400万"])
             if not p:
-                p = repo.pick_model(rule["camera_classes"], rule["camera_keywords"])
-            if refs:
-                where = "同行业" if p.get("scope") == "industry" else "同类项目"
-                basis = f"方案库{where}配单引用 {refs} 次"
-            else:
-                basis = "产品库按类目 + 关键词匹配"
-        if not p:
-            raise SpecGateError([f"产品库缺少 {req.target} 场景可用的摄像机（关键词：{'/'.join(rule['camera_keywords'])}）"])
+                raise SpecGateError([f"产品库缺少 {req.target} 可用摄像机"])
+            degraded = ("专属设备缺失，已降级为通用机型，"
+                        "需人工确认是否满足行业要求")
+            basis = f"产品库通用类目兜底（{'/'.join(fb_classes)}）"
+            plan.assumptions.append(f"{req.target}：{degraded}")
+
         if refs and p.get("year_new"):
             basis += f"（{p['year_new']} 上架）"
+        reason = (f"{req.target} {req.lanes} 路 · {req.intent}；"
+                  f"码流 {req.bitrate_mbps:g} Mbps；{basis}")
+        if degraded:
+            reason += f"；注意：{degraded}"
         devices.append(Device(
-            category="网络摄像机",
+            category=rule["device_category"],
             model=p["model"],
             qty=req.lanes,
             scene=req.target,
             display_name=p["display_name"],
             unit_price=p["price_stand"],
-            reason=f"{req.target} {req.lanes} 路 · {req.intent}；"
-                   f"码流 {req.bitrate_mbps:g} Mbps；{basis}",
+            reason=reason,
         ))
     return devices
 

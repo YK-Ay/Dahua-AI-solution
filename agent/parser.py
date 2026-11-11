@@ -23,12 +23,12 @@ import threading
 import requests
 
 from app.builder import SCENE_RULES, detect_industry, match_scenes
+from app.taxonomy import FALLBACK_SCENE, INDUSTRIES as _INDUSTRY_TABLE
 from app.rag import config as C
 from app import netcheck
 
 SCENE_NAMES = [r["name"] for r in SCENE_RULES]
-FALLBACK_SCENE = SCENE_RULES[-1]["name"]
-INDUSTRIES = ("智慧园区", "智慧校园", "智慧交管")
+INDUSTRIES = tuple(_INDUSTRY_TABLE)
 NUM_RE = re.compile(r"\d+")
 FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.S | re.I)
 LLM_TIMEOUT = float(os.getenv("AGENT_PARSE_TIMEOUT", "12"))
@@ -40,9 +40,10 @@ SYSTEM_PROMPT = (
     "你是安防方案需求结构化助手，只输出一个 JSON 对象，不要解释、不要 Markdown 标题。\n"
     "字段：\n"
     '  "project_name": 项目名字符串（可为 null）\n'
-    '  "industry": 只能是 智慧园区 / 智慧校园 / 智慧交管 之一\n'
-    '  "scenes": 场景名数组，只能从下面白名单里选\n'
-    "白名单：" + "、".join(SCENE_NAMES) + "\n"
+    '  "industry": 行业名，只能从下面行业白名单里选\n'
+    '  "scenes": 场景名数组，只能从下面场景白名单里选\n'
+    "行业白名单：" + "、".join(INDUSTRIES) + "\n"
+    "场景白名单：" + "、".join(SCENE_NAMES) + "\n"
     "严禁输出任何数字（点位数、天数、金额都不归你管）；"
     "严禁输出白名单以外的场景；原文没提到的场景不要臆测。"
 )
