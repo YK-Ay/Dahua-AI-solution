@@ -4,32 +4,32 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>智能问答 · 大华解决方案助手</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20261107-2000">
+  <link rel="stylesheet" href="/static/styles.css?v=20261113-1000">
   <style>[hidden]{display:none!important}</style>
   <style>
     .rag-wrap { max-width: 1180px; margin: 0 auto; padding: 28px 24px 70px; }
     .rag-hero { padding: 18px 0 24px; border-bottom: 1px solid var(--line); margin-bottom: 22px; }
-    .rag-hero h1 { font-size: 30px; margin: 8px 0 10px; color: var(--ink); letter-spacing: .5px; }
+    .rag-hero h1 { font-size: 26px; margin: 0 0 8px; color: var(--ink); letter-spacing: 0; font-weight: 700; }
     .rag-hero p { color: var(--ink-2); line-height: 1.75; max-width: 840px; margin: 0; font-size: 14px; }
-    .eyebrow { color: var(--red); font-size: 11px; font-weight: 700; letter-spacing: 2px; }
+    .eyebrow { color: var(--muted); font-size: 11.5px; font-weight: 600; letter-spacing: .12em; }
     .rag-engine {
-      display: flex; flex-wrap: wrap; gap: 10px 22px; margin-top: 18px; padding: 12px 16px;
-      background: var(--red-soft); border: 1px solid var(--line-strong); border-radius: 10px;
-      font-size: 12px; color: var(--ink-2);
+      display: flex; flex-wrap: wrap; gap: 10px 22px; margin-top: 16px; padding: 11px 15px;
+      background: #fff; border: 1px solid var(--line); border-radius: 8px;
+      font-size: 12px; color: var(--muted);
     }
-    .rag-engine b { color: var(--red); }
+    .rag-engine b { color: var(--ink); font-weight: 600; }
     .rag-engine .eng-item { display: inline-flex; align-items: center; gap: 6px; }
-    .rag-panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 20px; margin-bottom: 20px; }
-    .rag-label { display: block; font-size: 12px; font-weight: 700; color: var(--ink-2); margin-bottom: 8px; }
+    .rag-panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 20px; margin-bottom: 20px; }
+    .rag-label { display: block; font-size: 12.5px; font-weight: 600; color: var(--muted); margin-bottom: 8px; }
     .rag-query {
       width: 100%; min-height: 96px; resize: vertical; box-sizing: border-box;
-      border: 1px solid var(--line); border-radius: 9px; padding: 13px 14px;
-      font: 14px/1.7 inherit; color: var(--ink); background: var(--bg);
+      border: 1px solid var(--line); border-radius: 6px; padding: 11px 12px;
+      font: 14px/1.7 inherit; color: var(--ink); background: #fff;
     }
-    .rag-query:focus { outline: none; border-color: var(--red); box-shadow: 0 0 0 3px var(--red-glow); }
+    .rag-query:focus { outline: none; border-color: var(--line-strong); box-shadow: 0 0 0 3px var(--red-glow); }
     .rag-controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 14px; }
-    .rag-controls select, .rag-controls button { font: 13px inherit; border-radius: 8px; padding: 9px 12px; }
-    .rag-controls select { border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
+    .rag-controls select, .rag-controls button { font: 13px inherit; border-radius: 6px; padding: 9px 12px; }
+    .rag-controls select { border: 1px solid var(--line); background: #fff; color: var(--ink); }
     .rag-btn {
       background: var(--red); color: #fff; border: 1px solid var(--red); font-weight: 700;
       cursor: pointer; padding: 9px 20px !important; transition: .15s;
@@ -38,10 +38,10 @@
     .rag-btn:disabled { opacity: .55; cursor: wait; }
     .rag-examples { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
     .rag-chip {
-      font-size: 12px; padding: 6px 11px; border-radius: 999px; cursor: pointer;
-      border: 1px solid var(--line); background: var(--bg-2); color: var(--ink-2);
+      font-size: 12px; padding: 6px 11px; border-radius: 6px; cursor: pointer;
+      border: 1px solid var(--line); background: #fff; color: var(--ink-2);
     }
-    .rag-chip:hover { border-color: var(--red); color: var(--red); }
+    .rag-chip:hover { border-color: var(--line-strong); color: var(--ink); }
     .rag-warn { background: #fff8e8; border: 1px solid #f0d18a; color: #7a5300;
       border-radius: 9px; padding: 11px 14px; font-size: 13px; margin-bottom: 14px; }
     .rag-warn ul { margin: 6px 0 0; padding-left: 20px; }
@@ -54,12 +54,12 @@
       background: var(--bg-2); color: var(--ink-2); border-radius: 0 6px 6px 0; }
     .rag-answer table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 13px; }
     .rag-answer th, .rag-answer td { border: 1px solid var(--line); padding: 8px 10px; text-align: left; }
-    .rag-answer th { background: var(--red-soft); color: var(--red-dark); }
+    .rag-answer th { background: var(--bg-2); color: var(--ink-2); }
     .rag-answer code { background: var(--bg-2); padding: 1px 5px; border-radius: 4px; font-family: var(--mono); font-size: 12px; }
     .ref-chip {
       display: inline-block; font-size: 11px; line-height: 1.5; padding: 0 6px; margin: 0 2px;
-      border: 1px solid var(--line-strong); border-radius: 5px; background: var(--red-soft);
-      color: var(--red); cursor: pointer; vertical-align: baseline; font-family: inherit;
+      border: 1px solid var(--line-strong); border-radius: 4px; background: var(--bg-2);
+      color: var(--red-dark); cursor: pointer; vertical-align: baseline; font-family: inherit;
     }
     .ref-chip:hover { background: var(--red); color: #fff; }
     .rag-disclaimer { margin-top: 18px; padding-top: 12px; border-top: 1px dashed var(--line);
@@ -93,13 +93,12 @@
       <a href="/rag" class="active">智能问答</a>
       <a href="/compare">竞品对比</a>
     </nav>
-    <div class="nav-status"><span class="dot"></span>带来源标注 · 反幻觉</div>
+    <div class="nav-status"><span class="dot"></span>回答附来源 · 可追溯</div>
   </header>
 
   <main class="rag-wrap">
     <section class="rag-hero">
-      <span class="eyebrow">RAG · EVIDENCE FIRST</span>
-      <h1>带溯源的智能问答</h1>
+      <h1>资料问答</h1>
       <div class="rag-engine" id="rag-engine">正在读取检索索引…</div>
     </section>
 
@@ -149,6 +148,6 @@
     </section>
   </main>
 
-  <script src="/static/rag.js?v=20261106-1600"></script>
+  <script src="/static/rag.js?v=20261113-1000"></script>
 </body>
 </html>

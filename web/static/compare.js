@@ -121,7 +121,7 @@
 
   function itemHtml(brand, p) {
     var img = p.img_url
-      ? '<img class="cmp-thumb" src="' + esc(p.img_url) + '" loading="lazy" alt="" onerror="this.style.opacity=0.2">'
+      ? '<img class="cmp-thumb" src="' + esc(p.img_url) + '" loading="lazy" alt="" onerror="this.style.display=\'none\'">'
       : '<div class="cmp-thumb">' + (brand === "海康" ? "HIK" : "DH") + "</div>";
     var price = p.price_stand ? " · ¥" + fmt(p.price_stand) : "";
     return '<button class="cmp-item" data-model="' + esc(p.model) + '">' + img +

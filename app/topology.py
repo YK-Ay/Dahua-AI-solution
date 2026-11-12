@@ -17,21 +17,21 @@ from PIL import Image, ImageDraw, ImageFont
 
 from .models import Spec
 
-MARGIN_X = 56
-LABEL_W = 150          # 左侧层标题区宽度
-BAND_GAP = 54          # 层间留白（放连接线）
-CARD_H = 130
-CARD_GAP = 18
-CARD_W = 252           # 单卡固定宽度
+MARGIN_X = 48
+LABEL_W = 136          # 左侧层标题区宽度
+BAND_GAP = 44          # 层间留白（放连接线）
+CARD_H = 116
+CARD_GAP = 14
+CARD_W = 232           # 单卡固定宽度
 MAX_PER_ROW = 4        # 每层最多每行的卡片数
-TITLE_FONT = 38
-SUB_FONT = 19
-HEAD_FONT = 22
-NODE_HEAD = 18
-NODE_MODEL = 17
-NODE_SUB = 14
-NODE_LOC = 13          # 使用地点小字
-QTY_FONT = 22
+TITLE_FONT = 30
+SUB_FONT = 15
+HEAD_FONT = 18
+NODE_HEAD = 15
+NODE_MODEL = 14
+NODE_SUB = 12
+NODE_LOC = 11          # 使用地点小字
+QTY_FONT = 16
 
 FONT_CANDIDATES = [
     Path(r"C:\Windows\Fonts\msyh.ttc"),
@@ -173,46 +173,47 @@ def _device_node(draw: ImageDraw.ImageDraw, box, item: dict, dashed: bool) -> No
     x0, y0, x1, y1 = box
     color = _cat_color(item["category"]) if not dashed else C_BOX
     # 卡片
-    draw.rounded_rectangle(box, radius=14, fill=NODE_FILL, outline=NODE_LINE, width=2)
-    draw.rounded_rectangle([x0, y0, x0 + 6, y1], radius=3, fill=color)  # 左侧色条
+    draw.rounded_rectangle(box, radius=12, fill=NODE_FILL, outline=NODE_LINE, width=2)
+    draw.rounded_rectangle([x0, y0, x0 + 5, y1], radius=3, fill=color)  # 左侧色条
     # 图标区
-    _glyph(draw, item["category"], [x0 + 18, y0 + 24, x0 + 96, y1 - 24], color)
-    tx = x0 + 112
-    max_text = (x1 - 52) - tx  # 右侧给数量徽标留空间
-    draw.text((tx, y0 + 12), _fit(draw, item["category"], _font(NODE_HEAD), max_text),
+    _glyph(draw, item["category"], [x0 + 16, y0 + 22, x0 + 84, y1 - 22], color)
+    tx = x0 + 98
+    max_text = (x1 - 50) - tx   # 标题行给数量徽标留空间
+    wide_text = (x1 - 16) - tx  # 型号/副标题在徽标下方，可用整行宽度
+    draw.text((tx, y0 + 10), _fit(draw, item["category"], _font(NODE_HEAD), max_text),
               font=_font(NODE_HEAD), fill=color)
     if not dashed:
-        draw.text((tx, y0 + 38), _fit(draw, item.get("model", ""), _font(NODE_MODEL), max_text),
+        draw.text((tx, y0 + 42), _fit(draw, item.get("model", ""), _font(NODE_MODEL), wide_text),
                   font=_font(NODE_MODEL), fill=INK)
-        sub = _fit(draw, item.get("display_name", ""), _font(NODE_SUB), max_text)
+        sub = _fit(draw, item.get("display_name", ""), _font(NODE_SUB), wide_text)
         if sub:
-            draw.text((tx, y0 + 62), sub, font=_font(NODE_SUB), fill=MUTED)
+            draw.text((tx, y0 + 58), sub, font=_font(NODE_SUB), fill=MUTED)
         # 使用地点（需求3核心）：所有设备底部全宽标注使用地点，保证完整显示不截断
         scene = item.get("scene") or ""
         intent = item.get("intent") or ""
         if scene:
-            fy = y1 - 50
-            draw.rounded_rectangle([x0 + 12, fy, x1 - 12, fy + 22], radius=8,
+            fy = y1 - 42
+            draw.rounded_rectangle([x0 + 10, fy, x1 - 10, fy + 20], radius=8,
                                    fill=(255, 244, 245), outline=LINK, width=1)
-            draw.text((x0 + 22, fy + 4),
-                      _fit(draw, f"地点：{scene}", _font(NODE_SUB), (x1 - 16) - (x0 + 22)),
-                      font=_font(NODE_SUB), fill=LINK_DARK)
+            draw.text((x0 + 18, fy + 4),
+                      _fit(draw, f"地点：{scene}", _font(NODE_LOC), (x1 - 14) - (x0 + 18)),
+                      font=_font(NODE_LOC), fill=LINK_DARK)
         if intent:
             # 摄像机在地点下方再补一行建设目标
-            draw.text((x0 + 22, y1 - 24),
-                      _fit(draw, f"目标：{intent}", _font(NODE_SUB), (x1 - 16) - (x0 + 22)),
-                      font=_font(NODE_SUB), fill=C_PLATFORM)
+            draw.text((x0 + 18, y1 - 19),
+                      _fit(draw, f"目标：{intent}", _font(NODE_LOC), (x1 - 14) - (x0 + 18)),
+                      font=_font(NODE_LOC), fill=C_PLATFORM)
         # 数量徽标（右上角，独占，避免与底部地点条重叠）
-        bx, by = x1 - 28, y0 + 26
-        draw.ellipse([bx - 20, by - 20, bx + 20, by + 20], fill=LINK)
+        bx, by = x1 - 26, y0 + 22
+        draw.ellipse([bx - 18, by - 18, bx + 18, by + 18], fill=LINK)
         _centered_at(draw, f"×{item['qty']}", _font(QTY_FONT), bx, by, (255, 255, 255))
     else:
         draw.text((tx, y0 + 50), "待选型", font=_font(NODE_SUB), fill=MUTED)
 
 
 def _arrow_down(draw: ImageDraw.ImageDraw, x, y0, y1) -> None:
-    draw.line((x, y0, x, y1), fill=LINK, width=4)
-    head = 12
+    draw.line((x, y0, x, y1), fill=LINK, width=3)
+    head = 10
     draw.polygon([(x, y1), (x - head * 0.6, y1 - head), (x + head * 0.6, y1 - head)], fill=LINK)
 
 
@@ -273,7 +274,7 @@ def _render_simple(spec: Spec, out_path: Path | str) -> Path:
 
     area_w = max_content_w
     W = MARGIN_X * 2 + LABEL_W + area_w
-    top = 150
+    top = 132
     band_rects = []
     for items, per_row, rows, bh in band_layout:
         band_rects.append((top, bh, items, per_row, rows))
@@ -285,26 +286,26 @@ def _render_simple(spec: Spec, out_path: Path | str) -> Path:
 
     title_font = _font(TITLE_FONT)
     sub_font = _font(SUB_FONT)
-    title = "系统拓扑图（简略）"
+    title = "系统拓扑图（建议方案）"
     tw = _text_w(draw, title, title_font)
-    draw.text(((W - tw) / 2, 30), title, font=title_font, fill=INK)
+    draw.text(((W - tw) / 2, 26), title, font=title_font, fill=INK)
     sub = f"{spec.project.name} · {spec.project.industry}"
     sw = _text_w(draw, sub, sub_font)
-    draw.text(((W - sw) / 2, 82), sub, font=sub_font, fill=MUTED)
-    draw.line((MARGIN_X, 122, W - MARGIN_X, 122), fill=LINK, width=3)
+    draw.text(((W - sw) / 2, 64), sub, font=sub_font, fill=MUTED)
+    draw.line((MARGIN_X, 100, W - MARGIN_X, 100), fill=LINK, width=3)
 
     for i, (btop, bh, items, per_row, rows) in enumerate(band_rects):
         layer = LAYERS[i]
-        draw.rounded_rectangle((MARGIN_X, btop, W - MARGIN_X, btop + bh), radius=14,
+        draw.rounded_rectangle((MARGIN_X, btop, W - MARGIN_X, btop + bh), radius=12,
                                fill=PANEL, outline=PANEL_LINE, width=1)
-        draw.rounded_rectangle((MARGIN_X, btop, MARGIN_X + LABEL_W, btop + bh), radius=14,
+        draw.rounded_rectangle((MARGIN_X, btop, MARGIN_X + LABEL_W, btop + bh), radius=12,
                                fill=HEADER_FILL)
         draw.rectangle((MARGIN_X, btop, MARGIN_X + 5, btop + bh), fill=LINK_DARK)
         lw = _text_w(draw, f"{layer} 层", _font(HEAD_FONT))
-        draw.text((MARGIN_X + (LABEL_W - lw) / 2, btop + bh / 2 - 26), f"{layer} 层",
+        draw.text((MARGIN_X + (LABEL_W - lw) / 2, btop + bh / 2 - 24), f"{layer} 层",
                   font=_font(HEAD_FONT), fill=HEADER_INK)
         cw = _text_w(draw, f"{len(items)} 类设备", _font(SUB_FONT))
-        draw.text((MARGIN_X + (LABEL_W - cw) / 2, btop + bh / 2 + 6), f"{len(items)} 类设备",
+        draw.text((MARGIN_X + (LABEL_W - cw) / 2, btop + bh / 2 + 4), f"{len(items)} 类设备",
                   font=_font(SUB_FONT), fill=(255, 214, 216))
 
         card_w = CARD_W
@@ -336,26 +337,26 @@ def _render_simple(spec: Spec, out_path: Path | str) -> Path:
 # ===========================================================================
 def _detailed_node_box(draw, box, title, sub1, sub2, qty, color):
     x0, y0, x1, y1 = box
-    draw.rounded_rectangle(box, radius=14, fill=NODE_FILL, outline=color, width=2)
-    draw.rounded_rectangle([x0, y0, x0 + 6, y1], radius=3, fill=color)
-    draw.text((x0 + 22, y0 + 14), title, font=_font(NODE_HEAD + 2), fill=color)
+    draw.rounded_rectangle(box, radius=12, fill=NODE_FILL, outline=color, width=2)
+    draw.rounded_rectangle([x0, y0, x0 + 5, y1], radius=3, fill=color)
+    draw.text((x0 + 18, y0 + 10), title, font=_font(NODE_HEAD + 2), fill=color)
     if sub1:
-        draw.text((x0 + 22, y0 + 44), _fit(draw, sub1, _font(NODE_MODEL), (x1 - x0) - 44),
+        draw.text((x0 + 18, y0 + 40), _fit(draw, sub1, _font(NODE_MODEL), (x1 - x0) - 30),
                   font=_font(NODE_MODEL), fill=INK)
     if sub2:
-        draw.text((x0 + 22, y0 + 70), _fit(draw, sub2, _font(NODE_SUB), (x1 - x0) - 44),
+        draw.text((x0 + 18, y0 + 60), _fit(draw, sub2, _font(NODE_SUB), (x1 - x0) - 30),
                   font=_font(NODE_SUB), fill=MUTED)
     if qty:
-        bx, by = x1 - 30, y0 + 28
-        draw.ellipse([bx - 22, by - 22, bx + 22, by + 22], fill=color)
+        bx, by = x1 - 24, y0 + 22
+        draw.ellipse([bx - 17, by - 17, bx + 17, by + 17], fill=color)
         _centered_at(draw, f"×{qty}", _font(QTY_FONT), bx, by, (255, 255, 255))
 
 
 def _darrow(draw, x0, y0, x1, y1, color=LINK, label=None, label_font=None):
-    draw.line((x0, y0, x1, y1), fill=color, width=4)
+    draw.line((x0, y0, x1, y1), fill=color, width=3)
     import math as _m
     ang = _m.atan2(y1 - y0, x1 - x0)
-    head = 13
+    head = 11
     ah = [(x1, y1),
           (x1 - head * _m.cos(ang - 0.4), y1 - head * _m.sin(ang - 0.4)),
           (x1 - head * _m.cos(ang + 0.4), y1 - head * _m.sin(ang + 0.4))]
@@ -363,8 +364,12 @@ def _darrow(draw, x0, y0, x1, y1, color=LINK, label=None, label_font=None):
     if label and label_font:
         mx, my = (x0 + x1) / 2, (y0 + y1) / 2
         lw = _text_w(draw, label, label_font)
-        draw.rectangle((mx - lw / 2 - 5, my - 11, mx + lw / 2 + 5, my + 13), fill=BG)
-        draw.text((mx - lw / 2, my - 9), label, font=label_font, fill=LINK_DARK)
+        if abs(x1 - x0) >= abs(y1 - y0):   # 横线：标签放线上方，保持连线完整
+            lx, ly = mx - lw / 2, my - 20
+        else:                              # 竖线：标签放线右侧
+            lx, ly = mx + 8, my - 6
+        draw.rectangle((lx - 4, ly - 2, lx + lw + 4, ly + label_font.size + 2), fill=BG)
+        draw.text((lx, ly), label, font=label_font, fill=LINK_DARK)
 
 
 def _render_detailed(spec: Spec, out_path: Path | str) -> Path:
@@ -387,15 +392,18 @@ def _render_detailed(spec: Spec, out_path: Path | str) -> Path:
     switches = [d for d in spec.devices if d.category == "PoE交换机"]
     nvrs = [d for d in spec.devices if d.category in ("NVR", "通用存储录像机")]
     disks = [d for d in spec.devices if d.category == "机械硬盘"]
-    platforms = [d for d in spec.devices if "平台" in d.category]
+    # 平台按「软件 / 通道授权 / 服务器」三项分别统计：170 路是通道授权，不是 170 个平台
+    softs = [d for d in spec.devices if d.category in ("综合平台", "综合管理平台")]
+    licenses = [d for d in spec.devices if d.category == "平台授权"]
+    servers = [d for d in spec.devices if d.category == "平台服务器"]
     displays = [d for d in spec.devices if d.category in ("监视器", "拼接屏")]
 
     # 画布尺寸
-    SCENE_W, SCENE_H, SCENE_GAP = 320, 96, 16
+    SCENE_W, SCENE_H, SCENE_GAP = 300, 84, 14
     n_sc = max(1, len(scene_items))
     scenes_band_h = n_sc * SCENE_H + (n_sc - 1) * SCENE_GAP
 
-    SPINE_W, SPINE_H, SPINE_GAP = 250, 96, 22
+    SPINE_W, SPINE_H, SPINE_GAP = 230, 84, 18
     # spine 节点：交换机 / NVR / 平台 / 监视器（存在的才画）
     spine_defs = []
     if switches:
@@ -404,9 +412,15 @@ def _render_detailed(spec: Spec, out_path: Path | str) -> Path:
     if nvrs:
         spine_defs.append(("NVR 录像机", nvrs[0].model, "存储与录像",
                            sum(x.qty for x in nvrs), C_RECORDER))
-    if platforms:
-        spine_defs.append(("综合管理平台", platforms[0].model, "统一管理与上墙",
-                           sum(x.qty for x in platforms), C_PLATFORM))
+    if softs:
+        parts = []
+        if licenses:
+            parts.append(f"{sum(x.qty for x in licenses)} 路通道授权")
+        if servers:
+            parts.append(f"服务器 {sum(x.qty for x in servers)} 台")
+        sub = " · ".join(parts) if parts else "统一管理与上墙"
+        spine_defs.append(("综合管理平台", softs[0].model, sub,
+                           max(1, sum(x.qty for x in softs)), C_PLATFORM))
     if displays:
         head = "监视器" if displays[0].category == "监视器" else "拼接电视墙"
         spine_defs.append((head, displays[0].model, "监控中心上墙",
@@ -414,16 +428,16 @@ def _render_detailed(spec: Spec, out_path: Path | str) -> Path:
     n_sp = len(spine_defs)
     spine_band_h = n_sp * SPINE_H + (n_sp - 1) * SPINE_GAP
 
-    M = 56
+    M = 48
     SCENE_X = M
-    SPINE_X = SCENE_X + SCENE_W + 130
-    HDD_X = SPINE_X + SPINE_W + 60  # 硬盘分支在 NVR 右侧
-    HDD_W = 200
+    SPINE_X = SCENE_X + SCENE_W + 110
+    HDD_X = SPINE_X + SPINE_W + 50  # 硬盘分支在 NVR 右侧
+    HDD_W = 180
 
     band_h = max(scenes_band_h, spine_band_h)
-    TOP = 150
+    TOP = 132
     W = HDD_X + HDD_W + M
-    H = TOP + band_h + 200  # 底部留图例
+    H = TOP + band_h + 170  # 底部留图例
 
     # 场景区垂直居中
     scene_top = TOP + (band_h - scenes_band_h) / 2
@@ -434,13 +448,13 @@ def _render_detailed(spec: Spec, out_path: Path | str) -> Path:
 
     title_font = _font(TITLE_FONT)
     sub_font = _font(SUB_FONT)
-    title = "系统拓扑图（详细 · 逻辑连线）"
+    title = "系统拓扑图（工程建议）"
     tw = _text_w(draw, title, title_font)
-    draw.text(((W - tw) / 2, 30), title, font=title_font, fill=INK)
+    draw.text(((W - tw) / 2, 26), title, font=title_font, fill=INK)
     sub = f"{spec.project.name} · {spec.project.industry} · 全配单互连示意"
     sw = _text_w(draw, sub, sub_font)
-    draw.text(((W - sw) / 2, 82), sub, font=sub_font, fill=MUTED)
-    draw.line((M, 122, W - M, 122), fill=LINK, width=3)
+    draw.text(((W - sw) / 2, 64), sub, font=sub_font, fill=MUTED)
+    draw.line((M, 100, W - M, 100), fill=LINK, width=3)
 
     # ---- 场景摄像机节点 ----
     sy = scene_top
@@ -466,17 +480,20 @@ def _render_detailed(spec: Spec, out_path: Path | str) -> Path:
     spine_centers = [((b[0] + b[2]) / 2, (b[1] + b[3]) / 2) for b in spine_boxes]
 
     # ---- 连线 ----
-    # 1) 每个场景 → 交换机（扇形分散接入交换机左边缘不同高度）
-    if spine_boxes:
+    # 1) 摄像机 → 竖向总线 → 交换机：正交走线，去掉斜线
+    if spine_boxes and scene_centers:
         sw_box = spine_boxes[0]
         sw_left = sw_box[0]
-        n_s = len(scene_centers)
-        for i, (ex, ey) in enumerate(scene_centers):
-            ty = sw_box[1] + (i + 1) / (n_s + 1) * SPINE_H
-            _darrow(draw, ex, ey, sw_left, ty, label=None)
-        # 交换机入口标签（置于交换机左上方）
-        draw.text((sw_left - 122, sw_box[1] - 8), "网线/PoE 接入", font=_font(NODE_SUB),
-                  fill=LINK_DARK)
+        bus_x = SCENE_X + SCENE_W + 36
+        ty = sw_box[1] + SPINE_H / 2
+        ys = [ey for _, ey in scene_centers]
+        for ex, ey in scene_centers:
+            draw.line((ex, ey, bus_x, ey), fill=LINK, width=2)
+        draw.line((bus_x, min(ys + [ty]), bus_x, max(ys + [ty])), fill=LINK, width=2)
+        draw.line((bus_x, ty, sw_left, ty), fill=LINK, width=2)
+        draw.polygon([(sw_left, ty), (sw_left - 10, ty - 6), (sw_left - 10, ty + 6)], fill=LINK)
+        draw.text((sw_left - 100, ty - 20), "网线 / PoE 接入",
+                  font=_font(NODE_LOC), fill=LINK_DARK)
 
     # 2) spine 内部顺序连线 + 标签
     spine_labels = ["视频流汇聚", "统一管理", "上墙显示"]
@@ -502,7 +519,7 @@ def _render_detailed(spec: Spec, out_path: Path | str) -> Path:
                 label_font=_font(NODE_SUB))
 
     # ---- 图例 ----
-    ly = TOP + band_h + 28
+    ly = TOP + band_h + 22
     draw.text((M, ly), "连线含义：", font=_font(HEAD_FONT), fill=INK)
     legend = [
         "摄像机（按使用地点分组）→ 接入交换机（网线 / PoE）",
@@ -510,10 +527,10 @@ def _render_detailed(spec: Spec, out_path: Path | str) -> Path:
         "NVR → 监控硬盘（录像存储，按冗余系数折算块数）",
         "注：本图为逻辑连接示意；实际工程按点位就近接入交换机，并按区域 / 机柜位置部署。型号与数量来自选型结果。",
     ]
-    yy = ly + 36
+    yy = ly + 30
     for line in legend:
-        draw.text((M + 8, yy), "• " + line, font=_font(NODE_SUB), fill=MUTED)
-        yy += 28
+        draw.text((M + 6, yy), "• " + line, font=_font(NODE_SUB), fill=MUTED)
+        yy += 24
 
     img.save(out, "PNG")
     return out

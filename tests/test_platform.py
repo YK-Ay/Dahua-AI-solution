@@ -1,7 +1,7 @@
 """平台层分层选型：SMB 一体机 / ICC 纯软 + 通道授权 + 服务器。"""
 import unittest
 
-from app.builder import build_spec
+from app.builder import build_spec, parse_lane_total
 from app.kb import ProductRepo
 
 
@@ -78,6 +78,36 @@ class PlatformTierTest(unittest.TestCase):
             spec = build_spec(text, repo=self.repo)
             for d in platform_devices(spec):
                 self.assertIn(d.model, self.allowed)
+
+
+    def test_same_prompt_keeps_platform_stable(self):
+        text = "某园区：周界80路、出入口20路、停车场40路、室内60路，存储30天"
+        models = [
+            tuple(d.model for d in platform_devices(build_spec(text, repo=self.repo)))
+            for _ in range(5)
+        ]
+        self.assertEqual(len(set(models)), 1)
+        self.assertIn("DH-ICC-B8900-U-PRO", models[0])
+
+
+class LaneTotalTest(unittest.TestCase):
+    def test_sums_scene_lanes_without_total_marker(self):
+        self.assertEqual(parse_lane_total("周界80路，出入口20路"), 100)
+
+    def test_prefers_explicit_total_marker(self):
+        self.assertEqual(parse_lane_total("共170路，周界80路，出入口20路"), 170)
+
+    def test_prefers_breakdown_marker(self):
+        self.assertEqual(parse_lane_total("170路，其中周界80路、出入口20路"), 170)
+
+    def test_unmatched_scene_lanes_are_not_lost(self):
+        self.assertEqual(parse_lane_total("周界80路，出入口20路，主路30路"), 130)
+
+    def test_device_spec_is_not_counted_as_lane(self):
+        self.assertEqual(parse_lane_total("周界80路，出入口20路，配16路NVR"), 100)
+
+    def test_no_lane_number(self):
+        self.assertIsNone(parse_lane_total("某园区门禁与监控需求"))
 
 
 if __name__ == "__main__":

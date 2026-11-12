@@ -73,49 +73,99 @@
     return m;
   }
 
+  // 设备线稿图标：枪机 / 半球 / 交换机 / NVR / 硬盘 / 服务器 / 监视器
+  // 全部为纯 SVG 矢量，导出 PNG 时同样有效，不依赖任何外链图片。
   function iconSVG(type, cx, cy, s, color) {
-    var g =
-      '<g transform="translate(' + cx + "," + cy + ')">' +
-      '<rect x="' + (-s * 0.62) + '" y="' + (-s * 0.48) + '" width="' + s * 1.24 +
-      '" height="' + s * 0.96 + '" rx="7" fill="#ffffff" stroke="' + color + '" stroke-width="2"/>';
+    var g = '<g transform="translate(' + cx + "," + cy + ')" stroke="' + color +
+      '" stroke-linecap="round" stroke-linejoin="round" fill="none">';
     if (type === "camera") {
-      g +=
-        '<circle cx="0" cy="0" r="' + s * 0.34 + '" fill="none" stroke="' + color + '" stroke-width="2.4"/>' +
-        '<circle cx="0" cy="0" r="' + s * 0.16 + '" fill="' + color + '"/>' +
-        '<rect x="' + s * 0.2 + '" y="' + -s * 0.62 + '" width="' + s * 0.32 + '" height="' + s * 0.2 + '" rx="3" fill="' + color + '"/>';
+      // 枪机：壁装支架 + 机身 + 遮阳罩 + 镜头
+      g += '<path d="M' + (-s * 0.34) + ',' + (s * 0.56) + ' L' + (-s * 0.34) + ',' + (s * 0.18) +
+        '" stroke-width="' + (s * 0.1) + '"/>';
+      g += '<path d="M' + (-s * 0.54) + ',' + (s * 0.56) + ' L' + (-s * 0.14) + ',' + (s * 0.56) +
+        '" stroke-width="' + (s * 0.1) + '"/>';
+      g += '<rect x="' + (-s * 0.46) + '" y="' + (-s * 0.24) + '" width="' + (s * 0.94) + '" height="' + (s * 0.42) +
+        '" rx="' + (s * 0.09) + '" fill="#fff" stroke-width="' + (s * 0.07) + '"/>';
+      g += '<path d="M' + (-s * 0.52) + ',' + (-s * 0.22) + ' L' + (s * 0.5) + ',' + (-s * 0.22) +
+        '" stroke-width="' + (s * 0.13) + '"/>';
+      g += '<circle cx="' + (s * 0.33) + '" cy="' + (-s * 0.03) + '" r="' + (s * 0.15) +
+        '" fill="#fff" stroke-width="' + (s * 0.07) + '"/>';
+      g += '<circle cx="' + (s * 0.33) + '" cy="' + (-s * 0.03) + '" r="' + (s * 0.06) +
+        '" fill="' + color + '" stroke="none"/>';
+      g += '<circle cx="' + (-s * 0.24) + '" cy="' + (-s * 0.06) + '" r="' + (s * 0.045) +
+        '" fill="' + color + '" stroke="none"/>';
+    } else if (type === "dome") {
+      // 半球：球罩 + 底座 + 镜头
+      g += '<path d="M' + (-s * 0.5) + ',' + (s * 0.24) + ' Q0,' + (-s * 0.56) + ' ' + (s * 0.5) + ',' + (s * 0.24) +
+        '" fill="#fff" stroke-width="' + (s * 0.07) + '"/>';
+      g += '<rect x="' + (-s * 0.58) + '" y="' + (s * 0.24) + '" width="' + (s * 1.16) + '" height="' + (s * 0.22) +
+        '" rx="' + (s * 0.06) + '" fill="#fff" stroke-width="' + (s * 0.07) + '"/>';
+      g += '<circle cx="0" cy="' + (s * 0.04) + '" r="' + (s * 0.16) +
+        '" fill="#fff" stroke-width="' + (s * 0.07) + '"/>';
+      g += '<circle cx="0" cy="' + (s * 0.04) + '" r="' + (s * 0.065) + '" fill="' + color + '" stroke="none"/>';
     } else if (type === "switch") {
-      for (var i = 0; i < 4; i++) {
-        var px = -s * 0.5 + i * (s * 0.26);
-        g += '<rect x="' + px + '" y="' + s * 0.16 + '" width="' + s * 0.13 + '" height="' + s * 0.18 + '" rx="1.5" fill="' + color + '"/>';
+      // 交换机：机身 + 6 个网口 + 指示灯 + 上联口
+      g += '<rect x="' + (-s * 0.58) + '" y="' + (-s * 0.23) + '" width="' + (s * 1.16) + '" height="' + (s * 0.46) +
+        '" rx="' + (s * 0.07) + '" fill="#fff" stroke-width="' + (s * 0.07) + '"/>';
+      for (var i = 0; i < 6; i++) {
+        g += '<rect x="' + (-s * 0.48 + i * s * 0.16) + '" y="' + (s * 0.01) + '" width="' + (s * 0.11) +
+          '" height="' + (s * 0.14) + '" rx="' + (s * 0.02) + '" fill="' + color +
+          '" opacity="' + (i < 2 ? 0.4 : 1) + '" stroke="none"/>';
       }
-      g += '<circle cx="0" cy="' + -s * 0.2 + '" r="' + s * 0.1 + '" fill="' + color + '"/>';
+      g += '<circle cx="' + (-s * 0.42) + '" cy="' + (-s * 0.1) + '" r="' + (s * 0.045) +
+        '" fill="' + color + '" stroke="none"/>';
+      g += '<circle cx="' + (-s * 0.27) + '" cy="' + (-s * 0.1) + '" r="' + (s * 0.045) +
+        '" fill="' + color + '" opacity="0.45" stroke="none"/>';
+      g += '<rect x="' + (s * 0.3) + '" y="' + (-s * 0.13) + '" width="' + (s * 0.18) + '" height="' + (s * 0.1) +
+        '" rx="' + (s * 0.02) + '" stroke-width="' + (s * 0.05) + '"/>';
     } else if (type === "recorder") {
-      g +=
-        '<rect x="' + -s * 0.48 + '" y="' + -s * 0.3 + '" width="' + s * 0.96 + '" height="' + s * 0.22 + '" rx="3" fill="none" stroke="' + color + '" stroke-width="2"/>' +
-        '<rect x="' + -s * 0.48 + '" y="' + s * 0.04 + '" width="' + s * 0.96 + '" height="' + s * 0.22 + '" rx="3" fill="none" stroke="' + color + '" stroke-width="2"/>' +
-        '<circle cx="' + s * 0.42 + '" cy="' + -s * 0.28 + '" r="' + s * 0.06 + '" fill="' + color + '"/>';
-    } else if (type === "disk") {
-      g +=
-        '<rect x="' + -s * 0.5 + '" y="' + -s * 0.32 + '" width="' + s * 1.0 + '" height="' + s * 0.64 + '" rx="' + s * 0.1 + '" fill="#ffffff" stroke="' + color + '" stroke-width="2"/>' +
-        '<line x1="' + -s * 0.5 + '" y1="' + -s * 0.1 + '" x2="' + s * 0.5 + '" y2="' + -s * 0.1 + '" stroke="' + color + '" stroke-width="1.5"/>' +
-        '<line x1="' + -s * 0.5 + '" y1="' + s * 0.1 + '" x2="' + s * 0.5 + '" y2="' + s * 0.1 + '" stroke="' + color + '" stroke-width="1.5"/>' +
-        '<circle cx="' + s * 0.22 + '" cy="0" r="' + s * 0.12 + '" fill="' + color + '"/>';
-    } else if (type === "monitor") {
-      g +=
-        '<rect x="' + -s * 0.56 + '" y="' + -s * 0.46 + '" width="' + s * 1.12 + '" height="' + s * 0.72 + '" rx="6" fill="#ffffff" stroke="' + color + '" stroke-width="2"/>' +
-        '<rect x="' + -s * 0.42 + '" y="' + -s * 0.3 + '" width="' + s * 0.84 + '" height="' + s * 0.42 + '" rx="2" fill="' + color + '" opacity="0.18"/>' +
-        '<rect x="' + -s * 0.12 + '" y="' + s * 0.26 + '" width="' + s * 0.24 + '" height="' + s * 0.16 + '" fill="' + color + '"/>' +
-        '<rect x="' + -s * 0.28 + '" y="' + s * 0.4 + '" width="' + s * 0.56 + '" height="' + s * 0.09 + '" rx="2" fill="' + color + '"/>';
-    } else if (type === "platform") {
-      for (var k = 0; k < 3; k++) {
-        var yy = -s * 0.3 + k * s * 0.3;
-        g +=
-          '<rect x="' + -s * 0.56 + '" y="' + yy + '" width="' + s * 1.12 + '" height="' + s * 0.2 + '" rx="3" fill="none" stroke="' + color + '" stroke-width="2"/>' +
-          '<circle cx="' + s * 0.44 + '" cy="' + (yy + s * 0.1) + '" r="' + s * 0.045 + '" fill="' + color + '"/>';
+      // NVR：机身 + 硬盘仓 + 指示灯
+      g += '<rect x="' + (-s * 0.58) + '" y="' + (-s * 0.3) + '" width="' + (s * 1.16) + '" height="' + (s * 0.6) +
+        '" rx="' + (s * 0.07) + '" fill="#fff" stroke-width="' + (s * 0.07) + '"/>';
+      for (var j = 0; j < 3; j++) {
+        g += '<rect x="' + (-s * 0.46) + '" y="' + (-s * 0.19 + j * s * 0.14) + '" width="' + (s * 0.5) +
+          '" height="' + (s * 0.08) + '" rx="' + (s * 0.02) + '" fill="' + color +
+          '" opacity="0.35" stroke="none"/>';
       }
+      g += '<circle cx="' + (s * 0.34) + '" cy="' + (-s * 0.12) + '" r="' + (s * 0.06) +
+        '" fill="' + color + '" stroke="none"/>';
+      g += '<circle cx="' + (s * 0.34) + '" cy="' + (s * 0.04) + '" r="' + (s * 0.06) +
+        '" stroke-width="' + (s * 0.05) + '"/>';
+    } else if (type === "disk") {
+      // 硬盘：三层盘位
+      for (var k = 0; k < 3; k++) {
+        var yy = -s * 0.42 + k * s * 0.28;
+        g += '<rect x="' + (-s * 0.5) + '" y="' + yy + '" width="' + (s * 1.0) + '" height="' + (s * 0.2) +
+          '" rx="' + (s * 0.04) + '" fill="#fff" stroke-width="' + (s * 0.06) + '"/>';
+        g += '<circle cx="' + (s * 0.36) + '" cy="' + (yy + s * 0.1) + '" r="' + (s * 0.035) +
+          '" fill="' + color + '" stroke="none"/>';
+      }
+    } else if (type === "platform") {
+      // 平台/服务器：机架 + 4 个 U 位
+      g += '<rect x="' + (-s * 0.34) + '" y="' + (-s * 0.52) + '" width="' + (s * 0.68) + '" height="' + (s * 1.04) +
+        '" rx="' + (s * 0.07) + '" fill="#fff" stroke-width="' + (s * 0.07) + '"/>';
+      for (var m = 0; m < 4; m++) {
+        g += '<rect x="' + (-s * 0.24) + '" y="' + (-s * 0.42 + m * s * 0.24) + '" width="' + (s * 0.48) +
+          '" height="' + (s * 0.12) + '" rx="' + (s * 0.02) + '" fill="' + color +
+          '" opacity="' + (0.25 + m * 0.2) + '" stroke="none"/>';
+      }
+    } else if (type === "monitor") {
+      // 监视器：屏幕 + 底座
+      g += '<rect x="' + (-s * 0.58) + '" y="' + (-s * 0.46) + '" width="' + (s * 1.16) + '" height="' + (s * 0.7) +
+        '" rx="' + (s * 0.06) + '" fill="#fff" stroke-width="' + (s * 0.07) + '"/>';
+      g += '<rect x="' + (-s * 0.46) + '" y="' + (-s * 0.34) + '" width="' + (s * 0.92) + '" height="' + (s * 0.46) +
+        '" rx="' + (s * 0.03) + '" fill="' + color + '" opacity="0.16" stroke="none"/>';
+      g += '<path d="M' + (-s * 0.16) + ',' + (s * 0.24) + ' L' + (-s * 0.16) + ',' + (s * 0.4) + ' L' +
+        (s * 0.16) + ',' + (s * 0.4) + ' L' + (s * 0.16) + ',' + (s * 0.24) + '" stroke-width="' + (s * 0.07) + '"/>';
+      g += '<line x1="' + (-s * 0.3) + '" y1="' + (s * 0.46) + '" x2="' + (s * 0.3) + '" y2="' + (s * 0.46) +
+        '" stroke-width="' + (s * 0.07) + '"/>';
     } else {
-      g += '<circle cx="0" cy="0" r="' + s * 0.2 + '" fill="none" stroke="' + color + '" stroke-width="2.4"/>';
-      g += '<line x1="' + -s * 0.2 + '" y1="0" x2="' + s * 0.2 + '" y2="0" stroke="' + color + '" stroke-width="2"/>';
+      // 解码器 / 其它网络设备
+      g += '<rect x="' + (-s * 0.5) + '" y="' + (-s * 0.26) + '" width="' + (s * 1.0) + '" height="' + (s * 0.52) +
+        '" rx="' + (s * 0.06) + '" fill="#fff" stroke-width="' + (s * 0.07) + '"/>';
+      g += '<path d="M' + (-s * 0.18) + ',' + (-s * 0.11) + ' L' + (s * 0.16) + ',0 L' + (-s * 0.18) + ',' +
+        (s * 0.11) + ' Z" fill="' + color + '" opacity="0.7" stroke="none"/>';
+      g += '<circle cx="' + (s * 0.34) + '" cy="0" r="' + (s * 0.05) + '" fill="' + color + '" stroke="none"/>';
     }
     return g + "</g>";
   }
@@ -171,7 +221,7 @@
 
     var svg =
       '<svg class="topo-svg" viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="xMidYMid meet" ' +
-      'xmlns="http://www.w3.org/2000/svg" role="img" aria-label="系统拓扑图（简略）">' +
+      'xmlns="http://www.w3.org/2000/svg" role="img" aria-label="系统拓扑图（建议）">' +
       "<defs>" +
       '<linearGradient id="topoLink" x1="0" y1="0" x2="0" y2="1">' +
       '<stop offset="0" stop-color="' + RED + '" stop-opacity="0.2"/>' +
@@ -196,9 +246,9 @@
       "</style></defs>";
 
     svg += '<rect x="0" y="0" width="' + W + '" height="' + H + '" fill="#ffffff"/>';
-    svg += '<text x="' + (W / 2) + '" y="44" text-anchor="middle" font="800 32px sans-serif" fill="#1a1d24">系统拓扑图（简略）</text>';
+    svg += '<text x="' + (W / 2) + '" y="44" text-anchor="middle" font-size="26" font-weight="800" font-family="Microsoft YaHei, PingFang SC, sans-serif" fill="#1a1d24">系统拓扑图（建议方案）</text>';
     var sub = (spec.project ? spec.project.name : "方案") + " · 前端 → 存储 → 平台 → 显示";
-    svg += '<text x="' + (W / 2) + '" y="78" text-anchor="middle" font="500 16px sans-serif" fill="#6b7280">' + esc(sub) + "</text>";
+    svg += '<text x="' + (W / 2) + '" y="74" text-anchor="middle" font-size="12" font-weight="400" font-family="Microsoft YaHei, PingFang SC, sans-serif" fill="#6b7280">' + esc(sub) + "</text>";
     svg += '<line x1="' + MARGIN_X + '" y1="112" x2="' + (W - MARGIN_X) + '" y2="112" stroke="' + RED + '" stroke-width="3"/>';
 
     var centerX = areaX + areaW / 2;
@@ -293,161 +343,320 @@
   }
 
   // =======================================================================
-  // 超详细逻辑连线版
+  // 工程拓扑：三列分区（① 前端采集 / ② 传输与存储 / ③ 平台与显示）
+  //   · 平台按「软件 N 套 + 通道授权 N 路 + 服务器 N 台」分别标注，
+  //     不把 170 路通道授权折算成 170 个平台
+  //   · 专业设备线稿图标 + 圆角正交连线
   // =======================================================================
+  var ENG = {
+    W: 1256,
+    TOP: 128,
+    HEAD: 48,
+    PAD: 14,
+    LINK: "#93A1B5",
+    COLS: [
+      { x: 36, w: 356, color: "#0B6FB8", no: "1", title: "前端采集" },
+      { x: 438, w: 336, color: "#0F8A6A", no: "2", title: "传输与存储" },
+      { x: 820, w: 400, color: "#C8102E", no: "3", title: "平台与显示" }
+    ]
+  };
+
   function renderDetailed(container, spec) {
     if (!container) return;
     spec = spec || {};
+    var devices = spec.devices || [];
     var im = intentMap(spec);
-    var cameras = (spec.devices || []).filter(function (d) { return d.category === "网络摄像机"; });
-    var scenes = {};
-    cameras.forEach(function (d) { (scenes[d.scene || "未分类"] = scenes[d.scene || "未分类"] || []).push(d); });
-    var sceneItems = Object.keys(scenes).map(function (sc) {
-      var ds = scenes[sc];
-      return { scene: sc, intent: im[sc] || "", model: ds[0].model, dn: ds[0].display_name || "", qty: ds.reduce(function (a, x) { return a + (x.qty || 0); }, 0) };
+    var W = ENG.W, TOP = ENG.TOP, PAD = ENG.PAD, M = ENG.COLS[0].x;
+    var contentTop = TOP + ENG.HEAD + 10;
+    var CARD_H = 84, LGAP = 10, MGAP = 20, RGAP = 34;
+
+    function pick(cats) {
+      return devices.filter(function (d) { return cats.indexOf(d.category) >= 0; });
+    }
+    function sumQty(list) {
+      return list.reduce(function (a, x) { return a + (x.qty || 0); }, 0);
+    }
+    function modelOf(list) { return list.length ? (list[0].model || "") : ""; }
+    function nameOf(list) { return list.length ? (list[0].display_name || "") : ""; }
+
+    // ---------- 选型结果分组 ----------
+    var camList = pick(["网络摄像机"]);
+    var swList = pick(["PoE交换机", "交换机"]);
+    var nvrList = pick(["NVR", "通用存储录像机"]);
+    var diskList = pick(["机械硬盘"]);
+    var softList = pick(["综合平台", "综合管理平台"]);
+    var licList = pick(["平台授权"]);
+    var srvList = pick(["平台服务器"]);
+    var scrList = pick(["监视器", "拼接屏"]);
+    var accList = pick(["拼接支架"]);
+    var decList = pick(["解码器"]);
+    var lanes = sumQty(camList);
+
+    // 摄像机按使用地点分组
+    var sceneMap = {}, sceneKeys = [];
+    camList.forEach(function (d) {
+      var k = d.scene || "未分类";
+      if (!sceneMap[k]) { sceneMap[k] = []; sceneKeys.push(k); }
+      sceneMap[k].push(d);
     });
 
-    var switches = (spec.devices || []).filter(function (d) { return d.category === "PoE交换机"; });
-    var nvrs = (spec.devices || []).filter(function (d) { return d.category === "NVR" || d.category.indexOf("录像机") >= 0; });
-    var disks = (spec.devices || []).filter(function (d) { return d.category === "机械硬盘"; });
-    var platforms = (spec.devices || []).filter(function (d) { return d.category.indexOf("平台") >= 0; });
-    var monitors = (spec.devices || []).filter(function (d) { return d.category === "监视器"; });
-
-    var M = 56, SCENE_W = 320, SCENE_H = 96, SCENE_GAP = 16;
-    var SPINE_W = 250, SPINE_H = 96, SPINE_GAP = 22, HDD_W = 200;
-    var n_sc = Math.max(1, sceneItems.length);
-    var scenesBandH = n_sc * SCENE_H + (n_sc - 1) * SCENE_GAP;
-
-    var spineNodes = [];
-    if (switches.length) spineNodes.push({ t: "接入交换机", model: switches[0].model, sub: switches[0].display_name || "PoE 接入", qty: switches.reduce(function (a, x) { return a + (x.qty || 0); }, 0), color: COLORS.switch });
-    if (nvrs.length) spineNodes.push({ t: "NVR 录像机", model: nvrs[0].model, sub: "存储与录像", qty: nvrs.reduce(function (a, x) { return a + (x.qty || 0); }, 0), color: COLORS.recorder });
-    if (platforms.length) spineNodes.push({ t: "综合管理平台", model: platforms[0].model, sub: "统一管理与上墙", qty: platforms.reduce(function (a, x) { return a + (x.qty || 0); }, 0), color: COLORS.platform });
-    if (monitors.length) spineNodes.push({ t: "监视器", model: monitors[0].model, sub: "监控中心显示", qty: monitors.reduce(function (a, x) { return a + (x.qty || 0); }, 0), color: COLORS.monitor });
-    var n_sp = Math.max(1, spineNodes.length);
-    var spineBandH = n_sp * SPINE_H + (n_sp - 1) * SPINE_GAP;
-
-    var SCENE_X = M;
-    var SPINE_X = SCENE_X + SCENE_W + 130;
-    var HDD_X = SPINE_X + SPINE_W + 60;
-    var bandH = Math.max(scenesBandH, spineBandH);
-    var TOP = 150;
-    var W = HDD_X + HDD_W + M;
-    var H = TOP + bandH + 210;
-
-    var sceneTop = TOP + (bandH - scenesBandH) / 2;
-    var spineTop = TOP + (bandH - spineBandH) / 2;
-
-    var svg =
-      '<svg class="topo-svg" viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="xMidYMid meet" ' +
-      'xmlns="http://www.w3.org/2000/svg" role="img" aria-label="系统拓扑图（详细）">' +
-      "<defs><style>" +
-      ".dt-title{font:800 15px/1 'Microsoft YaHei',sans-serif;}" +
-      ".dt-model{font:600 12px/1.2 Consolas,monospace;}" +
-      ".dt-sub{font:400 11px/1.2 'Microsoft YaHei',sans-serif;}" +
-      ".dt-qty{font:700 14px/1 Consolas,monospace;}" +
-      ".dt-legend{font:500 12px/1.4 'Microsoft YaHei',sans-serif;fill:#6b7280;}" +
-      ".dt-cap{font:700 12px/1 'Microsoft YaHei',sans-serif;fill:#a30a14;}" +
-      ".dt-flow{stroke-dasharray:7 9;animation:dtDash 1.1s linear infinite;}" +
-      "@keyframes dtDash{to{stroke-dashoffset:-16;}}" +
-      "</style></defs>";
-
-    svg += '<text x="' + (W / 2) + '" y="40" text-anchor="middle" font="800 30px sans-serif" fill="#1a1d24">系统拓扑图（详细 · 逻辑连线）</text>';
-    var pname = (spec.project ? spec.project.name : "方案") + " · " + (spec.project ? spec.project.industry : "");
-    svg += '<text x="' + (W / 2) + '" y="74" text-anchor="middle" font="500 15px sans-serif" fill="#8a94a6">' + esc(pname) + " · 全配单互连示意</text>";
-    svg += '<line x1="' + M + '" y1="110" x2="' + (W - M) + '" y2="110" stroke="' + RED + '" stroke-width="3"/>';
-
-    // 场景节点
-    var sy = sceneTop, sceneCenters = [];
-    sceneItems.forEach(function (it) {
-      var box = { x: SCENE_X, y: sy, w: SCENE_W, h: SCENE_H };
-      svg += detailedNode(svg, box, it.scene, it.model, (it.intent ? it.intent + " · " : "") + it.dn, it.qty, COLORS.camera);
-      sceneCenters.push({ x: box.x + box.w, y: box.y + box.h / 2 });
-      sy += SCENE_H + SCENE_GAP;
-    });
-
-    // spine 节点
-    var spy = spineTop, spineBoxes = [];
-    spineNodes.forEach(function (nd) {
-      var box = { x: SPINE_X, y: spy, w: SPINE_W, h: SPINE_H };
-      svg += detailedNode(svg, box, nd.t, nd.model, nd.sub, nd.qty, nd.color);
-      spineBoxes.push(box);
-      spy += SPINE_H + SPINE_GAP;
-    });
-
-    // 连线：场景 → 交换机（扇形）
-    if (spineBoxes.length) {
-      var swb = spineBoxes[0];
-      sceneCenters.forEach(function (c, i) {
-        var ty = swb.y + (i + 1) / (sceneCenters.length + 1) * SPINE_H;
-        svg += arrow(c.x, c.y, swb.x, ty);
+    // ---------- ① 前端采集 ----------
+    var c1 = ENG.COLS[0];
+    var lx = c1.x + PAD, lw = c1.w - PAD * 2, ly = contentTop;
+    var leftCards = [];
+    sceneKeys.forEach(function (k) {
+      var ds = sceneMap[k];
+      leftCards.push({
+        box: { x: lx, y: ly, w: lw, h: CARD_H },
+        icon: /HDBW|DOME|半球/i.test(ds[0].model || "") ? "dome" : "camera",
+        color: COLORS.camera,
+        title: k,
+        model: ds[0].model,
+        sub: ds[0].display_name || "网络摄像机",
+        qty: sumQty(ds),
+        chip: im[k] ? "目标 " + im[k] : ""
       });
-      svg += '<text class="dt-cap" x="' + (swb.x - 12) + '" y="' + (swb.y - 10) + '" text-anchor="end">网线/PoE 接入</text>';
+      ly += CARD_H + LGAP;
+    });
+    if (!leftCards.length) {
+      leftCards.push({
+        box: { x: lx, y: contentTop, w: lw, h: CARD_H },
+        icon: "camera", color: COLORS.box, title: "前端摄像机",
+        model: "待选型", sub: "", qty: 0, dashed: true
+      });
     }
-    // spine 内部顺序连线
-    var spineLabels = ["视频流汇聚", "统一管理", "上墙显示"];
-    for (var i = 0; i < spineBoxes.length - 1; i++) {
-      var b0 = spineBoxes[i], b1 = spineBoxes[i + 1];
-      svg += arrow((b0.x + b0.w) / 2, b0.y + b0.h, (b1.x + b1.w) / 2, b1.y, spineLabels[i]);
+    var leftH = leftCards[leftCards.length - 1].box.y + CARD_H - contentTop;
+
+    // ---------- ② 传输与存储 ----------
+    var c2 = ENG.COLS[1];
+    var mx = c2.x + PAD, mw = c2.w - PAD * 2, my = contentTop;
+    var midCards = [];
+    function pushMid(icon, color, title, model, sub, q) {
+      var card = {
+        box: { x: mx, y: my, w: mw, h: CARD_H },
+        icon: icon, color: color, title: title, model: model, sub: sub, qty: q
+      };
+      midCards.push(card);
+      my += CARD_H + MGAP;
+      return card;
     }
-    // NVR → 硬盘
-    if (nvrs.length && disks.length && spineBoxes.length >= 2) {
-      var nvrB = spineBoxes[1] || spineBoxes[0];
-      var hddQty = disks.reduce(function (a, x) { return a + (x.qty || 0); }, 0);
-      var hddBox = { x: HDD_X, y: nvrB.y, w: HDD_W, h: SPINE_H };
-      svg += detailedNode(svg, hddBox, "监控硬盘", disks[0].model, "录像存储", hddQty, COLORS.disk);
-      svg += arrow(nvrB.x + nvrB.w, nvrB.y + nvrB.h / 2, hddBox.x, hddBox.y + hddBox.h / 2, "录像存储");
+    var swCard = swList.length
+      ? pushMid("switch", COLORS.switch, "PoE 接入交换机", modelOf(swList), nameOf(swList) || "前端就近接入与供电", sumQty(swList))
+      : null;
+    var nvrCard = nvrList.length
+      ? pushMid("recorder", COLORS.recorder, "NVR 录像机", modelOf(nvrList), "视频流汇聚与集中录像", sumQty(nvrList))
+      : null;
+    var diskCard = diskList.length
+      ? pushMid("disk", COLORS.disk, "监控硬盘", modelOf(diskList), "按冗余系数折算盘位", sumQty(diskList))
+      : null;
+    if (!midCards.length) pushMid("switch", COLORS.box, "传输设备", "待选型", "", 0);
+    var midH = midCards[midCards.length - 1].box.y + CARD_H - contentTop;
+
+    // ---------- ③ 平台与显示 ----------
+    var c3 = ENG.COLS[2];
+    var rx = c3.x + PAD, rw = c3.w - PAD * 2, ry = contentTop;
+    var srvCard = null, platCard = null, dispCard = null;
+    if (srvList.length) {
+      srvCard = {
+        box: { x: rx, y: ry, w: rw, h: CARD_H }, icon: "platform", color: "#3B4A63",
+        title: "平台服务器", model: modelOf(srvList), sub: "承载 ICC 平台运行", qty: sumQty(srvList)
+      };
+      ry += CARD_H + RGAP;
+    }
+    if (softList.length) {
+      var chips = [{ text: "软件 " + sumQty(softList) + " 套", tone: "red" }];
+      if (licList.length) chips.push({ text: "通道授权 " + sumQty(licList) + " 路", tone: "amber" });
+      platCard = {
+        box: { x: rx, y: ry, w: rw, h: 132 }, icon: "platform", color: COLORS.platform,
+        title: "综合管理平台", model: modelOf(softList), sub: nameOf(softList),
+        chips: chips, note: "统一管理 / 电子地图 / 解码上墙", qty: 0
+      };
+      ry += 132 + RGAP;
+    }
+    if (scrList.length) {
+      var extras = [];
+      if (accList.length) extras.push("支架 " + sumQty(accList) + " 套");
+      if (decList.length) extras.push("解码器 " + sumQty(decList) + " 台");
+      var isWall = scrList[0].category === "拼接屏";
+      dispCard = {
+        box: { x: rx, y: ry, w: rw, h: CARD_H }, icon: "monitor", color: COLORS.monitor,
+        title: isWall ? "拼接电视墙" : "监控监视器", model: modelOf(scrList),
+        sub: (isWall ? sumQty(scrList) + " 块拼接" : "监控中心显示") +
+          (extras.length ? " · " + extras.join(" · ") : ""),
+        qty: sumQty(scrList)
+      };
+    }
+    var rightH = Math.max(
+      srvCard ? srvCard.box.y + srvCard.box.h : 0,
+      platCard ? platCard.box.y + platCard.box.h : 0,
+      dispCard ? dispCard.box.y + dispCard.box.h : 0
+    ) - contentTop;
+    if (rightH < 0) rightH = 0;
+
+    var panelContentH = Math.max(leftH, midH, rightH, 180);
+    // 各列在分区内垂直居中，避免列高差异造成上重下空
+    var offL = (panelContentH - leftH) / 2, offM = (panelContentH - midH) / 2;
+    leftCards.forEach(function (b) { b.box.y += offL; });
+    midCards.forEach(function (b) { b.box.y += offM; });
+    var panelH = ENG.HEAD + 10 + panelContentH + 16;
+    var panelBottom = TOP + panelH;
+    var fy = panelBottom + 34;
+    var H = fy + 62;
+
+    // ---------- 绘制工具 ----------
+    function elbow(x0, y0, x1, y1) {
+      if (Math.abs(y1 - y0) < 1.5) return "M" + x0 + "," + y0 + " H" + x1;
+      var r = Math.min(10, Math.abs(x1 - x0) / 2, Math.abs(y1 - y0) / 2);
+      var mid = (x0 + x1) / 2;
+      var dir = y1 > y0 ? 1 : -1;
+      return "M" + x0 + "," + y0 +
+        " H" + (mid - r) +
+        " Q" + mid + "," + y0 + " " + mid + "," + (y0 + dir * r) +
+        " V" + (y1 - dir * r) +
+        " Q" + mid + "," + y1 + " " + (mid + r) + "," + y1 +
+        " H" + x1;
+    }
+    function tag(cx, cy, text) {
+      var tw = measure(text, 9) + 14;
+      return '<rect x="' + (cx - tw / 2) + '" y="' + (cy - 8) + '" width="' + tw + '" height="16" rx="8" fill="#FFFFFF" stroke="#E4E8EE" stroke-width="1"/>' +
+        '<text x="' + cx + '" y="' + (cy + 3) + '" text-anchor="middle" font-size="9" font-weight="500" font-family="Microsoft YaHei, PingFang SC, sans-serif" fill="#5B6878">' + esc(text) + "</text>";
+    }
+    // 竖线右侧贴标签，避免标签压住连线
+    function tagNear(xLine, cy, text) {
+      return tag(xLine + 7 + (measure(text, 9) + 14) / 2, cy, text);
+    }
+    function link(path, dashed) {
+      return '<path d="' + path + '" fill="none" stroke="' + ENG.LINK + '" stroke-width="1.4"' +
+        (dashed ? ' stroke-dasharray="4 4"' : "") + ' marker-end="url(#engArrow)"/>';
+    }
+    function card(b) {
+      var col = b.color || COLORS.box;
+      var x = b.box.x, y = b.box.y, w = b.box.w, h = b.box.h;
+      var s = "<g>";
+      s += "<title>" + esc(b.title) + (b.model ? "　" + esc(b.model) : "") + (b.qty ? "　×" + b.qty : "") + "</title>";
+      s += '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="10" fill="#FFFFFF" stroke="' +
+        (b.dashed ? "#D7DDE6" : "#E4E8EE") + '" stroke-width="1.1"' + (b.dashed ? ' stroke-dasharray="6 5"' : "") + "/>";
+      s += '<rect x="' + x + '" y="' + (y + 9) + '" width="3.5" height="' + (h - 18) + '" rx="2" fill="' + col + '" opacity="' + (b.dashed ? 0.4 : 1) + '"/>';
+      s += iconSVG(b.icon || "box", x + 30, y + (b.chips ? 38 : h / 2 + 2), 22, col);
+      var tx = x + 57, bodyW = w - 57 - 12;
+      var pillW = b.qty ? measure("×" + b.qty, 9.5) + 16 : 0;
+      s += '<text x="' + tx + '" y="' + (y + 22) + '" font-size="12" font-weight="700" font-family="Microsoft YaHei, PingFang SC, sans-serif" fill="' + col + '">' +
+        esc(fit(b.title, bodyW - (pillW ? pillW + 8 : 0), 12)) + "</text>";
+      s += '<text x="' + tx + '" y="' + (y + 40) + '" font-size="9.5" font-weight="500" font-family="Consolas, JetBrains Mono, monospace" fill="#3E4655">' +
+        esc(fit(b.model || "—", bodyW, 9.5)) + "</text>";
+      s += '<text x="' + tx + '" y="' + (y + 55) + '" font-size="9" font-weight="400" font-family="Microsoft YaHei, PingFang SC, sans-serif" fill="#76808F">' +
+        esc(fit(b.sub || "", bodyW, 9)) + "</text>";
+      if (pillW) {
+        var px = x + w - 10 - pillW;
+        s += '<rect x="' + px + '" y="' + (y + 10) + '" width="' + pillW + '" height="18" rx="9" fill="' + col + '"/>';
+        s += '<text x="' + (px + pillW / 2) + '" y="' + (y + 23) + '" text-anchor="middle" font-size="9.5" font-weight="700" font-family="Consolas, monospace" fill="#FFFFFF">×' + b.qty + "</text>";
+      }
+      if (b.chips && b.chips.length) {
+        var cx0 = tx;
+        b.chips.forEach(function (ch) {
+          var tone = ch.tone === "amber"
+            ? { bg: "#FFF7E6", bd: "#F0D29B", fg: "#8A5B00" }
+            : { bg: "#FDECEE", bd: "#F3C7CC", fg: "#A30A14" };
+          var cw = measure(ch.text, 9) + 18;
+          s += '<rect x="' + cx0 + '" y="' + (y + 66) + '" width="' + cw + '" height="22" rx="11" fill="' + tone.bg + '" stroke="' + tone.bd + '"/>';
+          s += '<text x="' + (cx0 + 9) + '" y="' + (y + 81) + '" font-size="9" font-weight="600" font-family="Microsoft YaHei, PingFang SC, sans-serif" fill="' + tone.fg + '">' + esc(ch.text) + "</text>";
+          cx0 += cw + 8;
+        });
+        if (b.note) {
+          s += '<text x="' + tx + '" y="' + (y + 104) + '" font-size="9" font-weight="400" font-family="Microsoft YaHei, PingFang SC, sans-serif" fill="#8A94A6">' +
+            esc(fit(b.note, bodyW, 9)) + "</text>";
+        }
+      } else if (b.chip) {
+        var chW = Math.min(measure(b.chip, 9) + 18, bodyW);
+        s += '<rect x="' + tx + '" y="' + (y + 61) + '" width="' + chW + '" height="16" rx="8" fill="#FDECEE"/>';
+        s += '<text x="' + (tx + 9) + '" y="' + (y + 72) + '" font-size="9" font-weight="600" font-family="Microsoft YaHei, PingFang SC, sans-serif" fill="#A30A14">' +
+          esc(b.chip) + "</text>";
+      }
+      return s + "</g>";
     }
 
-    // 图例
-    var ly = TOP + bandH + 40;
-    svg += '<text class="dt-title" x="' + M + '" y="' + ly + '" fill="#1a1d24">连线含义</text>';
-    var legend = [
-      "摄像机（按使用地点分组）→ 接入交换机（网线 / PoE）",
-      "交换机 → NVR（视频流汇聚与录像）→ 综合平台（统一管理）→ 监视器（上墙显示）",
-      "NVR → 监控硬盘（录像存储，按冗余系数折算块数）",
-      "注：本图为逻辑连接示意；实际工程按点位就近接入交换机，并按区域 / 机柜位置部署。型号与数量来自选型结果。",
-    ];
-    var yy = ly + 30;
-    legend.forEach(function (line) {
-      svg += '<text class="dt-legend" x="' + (M + 10) + '" y="' + yy + '">• ' + esc(line) + "</text>";
-      yy += 28;
+    // ---------- 画布 ----------
+    var svg = '<svg class="topo-svg" viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="xMidYMid meet" ' +
+      'xmlns="http://www.w3.org/2000/svg" role="img" aria-label="系统拓扑图（工程）">';
+    svg += "<defs>";
+    svg += '<marker id="engArrow" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="5" markerHeight="5" orient="auto">' +
+      '<path d="M0,0 L10,5 L0,10 z" fill="' + ENG.LINK + '"/></marker>';
+    svg += "</defs>";
+    svg += '<rect x="0" y="0" width="' + W + '" height="' + H + '" fill="#FFFFFF"/>';
+    svg += '<text x="' + (W / 2) + '" y="42" text-anchor="middle" font-size="26" font-weight="800" font-family="Microsoft YaHei, PingFang SC, sans-serif" fill="#1A1D24">系统拓扑图（工程建议）</text>';
+    var pname = spec.project ? (spec.project.name || "方案") : "方案";
+    var ind = spec.project ? (spec.project.industry || "") : "";
+    var meta = [pname, ind, lanes ? lanes + " 路接入" : ""].filter(function (x) { return !!x; }).join(" · ");
+    svg += '<text x="' + (W / 2) + '" y="68" text-anchor="middle" font-size="12" font-weight="400" font-family="Microsoft YaHei, PingFang SC, sans-serif" fill="#8A94A6">' + esc(meta) + "</text>";
+    svg += '<line x1="' + M + '" y1="90" x2="' + (W - M) + '" y2="90" stroke="' + RED + '" stroke-width="2.4"/>';
+
+    // 分区面板
+    [[c1, lanes ? lanes + " 路 · " + sceneKeys.length + " 个区域" : "按使用地点分组"],
+     [c2, "PoE 接入 · 集中录像"],
+     [c3, "统一管理 · 解码上墙"]].forEach(function (pair) {
+      var c = pair[0], subTxt = pair[1];
+      svg += '<rect x="' + c.x + '" y="' + TOP + '" width="' + c.w + '" height="' + panelH + '" rx="12" fill="#F8F9FB" stroke="#E4E8EE" stroke-width="1.1"/>';
+      svg += '<circle cx="' + (c.x + 24) + '" cy="' + (TOP + 24) + '" r="11" fill="' + c.color + '"/>';
+      svg += '<text x="' + (c.x + 24) + '" y="' + (TOP + 28) + '" text-anchor="middle" font-size="11" font-weight="700" font-family="Microsoft YaHei, PingFang SC, sans-serif" fill="#FFFFFF">' + c.no + "</text>";
+      svg += '<text x="' + (c.x + 42) + '" y="' + (TOP + 28) + '" font-size="13" font-weight="700" font-family="Microsoft YaHei, PingFang SC, sans-serif" fill="#1F2733">' + esc(c.title) + "</text>";
+      svg += '<text x="' + (c.x + c.w - 14) + '" y="' + (TOP + 27) + '" text-anchor="end" font-size="9.5" font-weight="400" font-family="Microsoft YaHei, PingFang SC, sans-serif" fill="#8A94A6">' + esc(subTxt) + "</text>";
+      svg += '<line x1="' + (c.x + 14) + '" y1="' + (TOP + 40) + '" x2="' + (c.x + c.w - 14) + '" y2="' + (TOP + 40) + '" stroke="#E4E8EE" stroke-width="1"/>';
     });
 
-    svg += "</svg>";
-    container.innerHTML = svg;
+    // 设备卡片
+    leftCards.forEach(function (b) { svg += card(b); });
+    midCards.forEach(function (b) { svg += card(b); });
+    [srvCard, platCard, dispCard].forEach(function (b) { if (b) svg += card(b); });
 
-    function detailedNode(svg, box, title, model, sub, qty, color) {
-      var s = "";
-      s += '<g>';
-      s += '<title>' + esc(title) + "　型号 " + esc(model) + "　×" + qty + "</title>";
-      s += '<rect x="' + box.x + '" y="' + box.y + '" width="' + box.w + '" height="' + box.h + '" rx="14" fill="#ffffff" stroke="' + color + '" stroke-width="2"/>';
-      s += '<rect x="' + box.x + '" y="' + box.y + '" width="6" height="' + box.h + '" rx="3" fill="' + color + '"/>';
-      s += iconSVG(iconType(title.indexOf("摄像机") >= 0 ? "camera" : (title.indexOf("交换机") >= 0 ? "switch" : (title.indexOf("NVR") >= 0 ? "recorder" : (title.indexOf("硬盘") >= 0 ? "disk" : (title.indexOf("平台") >= 0 ? "platform" : (title.indexOf("监视器") >= 0 ? "monitor" : "box")))))), box.x + 40, box.y + box.h / 2, 24, color);
-      var titleW = box.w - 74 - (qty > 0 ? 62 : 16);
-      var bodyW = box.w - 74 - 18;
-      s += '<text class="dt-title" x="' + (box.x + 74) + '" y="' + (box.y + 26) + '" fill="' + color + '">' + esc(fit(title, titleW, 15)) + "</text>";
-      s += '<text class="dt-model" x="' + (box.x + 74) + '" y="' + (box.y + 52) + '">' + esc(fit(model, bodyW, 12)) + "</text>";
-      s += '<text class="dt-sub" x="' + (box.x + 74) + '" y="' + (box.y + 74) + '">' + esc(fit(sub, bodyW, 11)) + "</text>";
-      if (qty > 0) {
-        s += '<circle cx="' + (box.x + box.w - 26) + '" cy="' + (box.y + 24) + '" r="16" fill="' + color + '"/>';
-        s += '<text class="dt-qty" x="' + (box.x + box.w - 26) + '" y="' + (box.y + 29) + '" text-anchor="middle" fill="#fff">×' + qty + "</text>";
-      }
-      s += "</g>";
-      return s;
+    // 连线
+    var hub = swCard || nvrCard;
+    if (hub) {
+      var hb = hub.box, nL = leftCards.length;
+      leftCards.forEach(function (c, i) {
+        if (c.dashed) return;
+        var y0 = c.box.y + c.box.h / 2;
+        var y1 = nL === 1 ? hb.y + hb.h / 2 : hb.y + hb.h * (i + 1) / (nL + 1);
+        svg += link(elbow(c.box.x + c.box.w, y0, hb.x, y1));
+      });
     }
-    function arrow(x0, y0, x1, y1, label) {
-      var ang = Math.atan2(y1 - y0, x1 - x0), head = 12;
-      var ax = x1 - head * Math.cos(ang), ay = y1 - head * Math.sin(ang);
-      var s = '<line x1="' + x0 + '" y1="' + y0 + '" x2="' + x1 + '" y2="' + y1 + '" stroke="' + RED + '" stroke-width="3"/>';
-      s += '<line class="dt-flow" x1="' + x0 + '" y1="' + y0 + '" x2="' + ax + '" y2="' + ay + '" stroke="' + RED2 + '" stroke-width="1.6"/>';
-      s += '<polygon points="' + x1 + "," + y1 + " " + (x1 - 11 * Math.cos(ang - 0.5)) + "," + (y1 - 11 * Math.sin(ang - 0.5)) + " " + (x1 - 11 * Math.cos(ang + 0.5)) + "," + (y1 - 11 * Math.sin(ang + 0.5)) + '" fill="' + RED + '"/>';
-      if (label) {
-        var mx = (x0 + x1) / 2, my = (y0 + y1) / 2;
-        s += '<rect x="' + (mx - 44) + '" y="' + (my - 11) + '" width="88" height="20" rx="6" fill="#ffffff"/>';
-        s += '<text x="' + mx + '" y="' + (my + 4) + '" text-anchor="middle" font="700 11px sans-serif" fill="#a30a14">' + esc(label) + "</text>";
-      }
-      return s;
+    if (swCard && nvrCard) {
+      var ax = swCard.box.x + swCard.box.w / 2;
+      svg += link("M" + ax + "," + (swCard.box.y + swCard.box.h) + " V" + nvrCard.box.y);
+      svg += tagNear(ax, (swCard.box.y + swCard.box.h + nvrCard.box.y) / 2, "视频流汇聚");
     }
+    if (nvrCard && diskCard) {
+      var bx = nvrCard.box.x + nvrCard.box.w / 2;
+      svg += link("M" + bx + "," + (nvrCard.box.y + nvrCard.box.h) + " V" + diskCard.box.y);
+      svg += tagNear(bx, (nvrCard.box.y + nvrCard.box.h + diskCard.box.y) / 2, "录像存储");
+    }
+    if (nvrCard && platCard) {
+      var nx1 = nvrCard.box.x + nvrCard.box.w, ny = nvrCard.box.y + nvrCard.box.h / 2;
+      svg += link("M" + nx1 + "," + ny + " H" + platCard.box.x);
+      svg += tag((nx1 + platCard.box.x) / 2, ny - 14, "视频流");
+    }
+    if (srvCard && platCard) {
+      var sx = srvCard.box.x + srvCard.box.w / 2;
+      svg += link("M" + sx + "," + (srvCard.box.y + srvCard.box.h) + " V" + platCard.box.y, true);
+      svg += tagNear(sx, (srvCard.box.y + srvCard.box.h + platCard.box.y) / 2, "承载");
+    }
+    if (platCard && dispCard) {
+      var px2 = platCard.box.x + platCard.box.w / 2;
+      svg += link("M" + px2 + "," + (platCard.box.y + platCard.box.h) + " V" + dispCard.box.y);
+      svg += tagNear(px2, (platCard.box.y + platCard.box.h + dispCard.box.y) / 2, "上墙");
+    }
+
+    // 图例与说明
+    svg += '<line x1="' + M + '" y1="' + fy + '" x2="' + (M + 38) + '" y2="' + fy + '" stroke="' + ENG.LINK + '" stroke-width="1.4" marker-end="url(#engArrow)"/>';
+    var legTxt = "PoE / 网络视频流（摄像机 → 交换机 → NVR → 平台 → 上墙）";
+    svg += '<text x="' + (M + 46) + '" y="' + (fy + 3.5) + '" font-size="9.5" font-weight="400" font-family="Microsoft YaHei, PingFang SC, sans-serif" fill="#5B6878">' + esc(legTxt) + '</text>';
+    var dx0 = M + 46 + measure(legTxt, 9.5) + 34;
+    svg += '<line x1="' + dx0 + '" y1="' + fy + '" x2="' + (dx0 + 38) + '" y2="' + fy + '" stroke="' + ENG.LINK + '" stroke-width="1.4" stroke-dasharray="4 4"/>';
+    svg += '<text x="' + (dx0 + 46) + '" y="' + (fy + 3.5) + '" font-size="9.5" font-weight="400" font-family="Microsoft YaHei, PingFang SC, sans-serif" fill="#5B6878">承载关系（平台软件运行于服务器）</text>';
+    svg += '<text x="' + M + '" y="' + (fy + 28) + '" font-size="10" font-weight="400" font-family="Microsoft YaHei, PingFang SC, sans-serif" fill="#8A94A6">读图：摄像机就近接入 PoE 交换机并供电，视频流汇聚到 NVR 集中录像，再由综合管理平台统一管理、解码上墙。</text>';
+    svg += '<text x="' + M + '" y="' + (fy + 46) + '" font-size="10" font-weight="400" font-family="Microsoft YaHei, PingFang SC, sans-serif" fill="#8A94A6">说明：本图为工程建议拓扑，实际按点位就近接入交换机、按区域 / 机柜部署；型号与数量来自选型结果。</text>';
+    svg += "</svg>";
+
+    container.innerHTML = svg;
   }
 
   function render(container, spec, mode) {

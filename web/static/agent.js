@@ -664,7 +664,7 @@
       var d = await api("/api/agent/sessions/" + encodeURIComponent(tid) + "/versions");
       var items = d.items || [];
       if (!items.length) { box.hidden = true; list.innerHTML = ""; return; }
-      var LABELS = { docx: "Word", png: "简略图", png_detail: "详细图" };
+      var LABELS = { docx: "Word", png: "建议拓扑", png_detail: "工程拓扑" };
       list.innerHTML = items.map(function (v) {
         var links = Object.keys(LABELS).filter(function (k) { return v.files[k]; })
           .map(function (k) {
@@ -735,7 +735,7 @@
     // 导出当前正在查看的拓扑图为 PNG（客户端，离线可用）
     $("dl-png-svg").addEventListener("click", function () {
       if (window.DahuaTopology) {
-        DahuaTopology.exportPNG($("topo-host"), st.mode === "detailed" ? "拓扑图-详细.png" : "拓扑图-简略.png");
+        DahuaTopology.exportPNG($("topo-host"), st.mode === "detailed" ? "拓扑图-工程.png" : "拓扑图-建议.png");
       }
     });
     $("btn-start").addEventListener("click", function () { start(this); });

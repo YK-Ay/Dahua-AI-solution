@@ -149,6 +149,39 @@ def _first_int(pattern: str, text: str) -> int | None:
     return int(m.group(1)) if m else None
 
 
+# 总量写法：「共/合计 170 路」或「170 路，其中…」
+_TOTAL_MARK = re.compile(
+    r"(?:共|合计|总共|总计|总量|总点位|总路数|共需)\s*(?:约|为|计|需)?\s*"
+    r"(\d+)\s*(?:路|个点位|台摄像机|摄像机|点位|个监控)")
+_BREAKDOWN_MARK = re.compile(
+    r"(\d+)\s*(?:路|个点位|台摄像机|摄像机|点位|个监控)\s*[，,、；;]?\s*"
+    r"(?:其中|包含|分别是|分别为|明细|如下)")
+_LANE_COUNT = re.compile(r"(\d+)\s*(?:路|个点位|台摄像机|摄像机|点位|个监控)")
+# 「16 路 NVR」「8 路解码器」是设备规格，不是摄像机点位
+_DEVICE_AFTER = re.compile(r"\s*(?:NVR|NVD|XVR|解码器|录像机|交换机|上墙)")
+
+
+def parse_lane_total(text: str) -> int | None:
+    """识别项目总点位。
+
+    优先级：显式总量（「共 170 路」「170 路，其中…」）→ 各场景路数之和。
+    取第一个数字会把「周界80路，出入口20路」误判成 80 路，导致平台档位
+    从 ICC 掉到 SMB；求和可保证同一提示词的档位稳定。
+    """
+    for pattern in (_TOTAL_MARK, _BREAKDOWN_MARK):
+        m = pattern.search(text)
+        if m:
+            return int(m.group(1))
+    nums = [
+        int(m.group(1))
+        for m in _LANE_COUNT.finditer(text)
+        if not _DEVICE_AFTER.match(text, m.end())
+    ]
+    if not nums:
+        return None
+    return sum(nums) if len(nums) > 1 else nums[0]
+
+
 # 路数写法：40路 / 40 个点位 / 40台摄像机 / 40个
 _LANE_UNIT = re.compile(r"(\d+)\s*(?:路|个点位|台摄像机|摄像机|台|个)")
 _CLAUSE_SEP = "，,。；;、\n\r"
@@ -328,7 +361,7 @@ def analyze(
     industries = bom_industries(industry, tags)
     scenes, rejected_scenes = match_scenes_detail(text, industry)
 
-    parsed_total = _first_int(r"(\d+)\s*(?:路|个点位|台摄像机|摄像机|点位|个监控)", text)
+    parsed_total = parse_lane_total(text)
     total = lanes or parsed_total or DEFAULT_LANES
     gaps: list[str] = []
     assumptions = ["码流按场景经验值估算，交付前需按实际设备型号核对"]

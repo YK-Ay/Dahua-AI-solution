@@ -4,13 +4,13 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Agent 工作台 · 大华解决方案助手</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20261106-2100">
+  <link rel="stylesheet" href="/static/styles.css?v=20261113-1000">
   <style>
     [hidden]{display:none!important}
     .run-meta { display:flex; gap:18px; flex-wrap:wrap; font-size:12.5px; color:var(--muted); margin-bottom:12px; }
     .run-meta b { color:var(--ink); font-family:var(--mono); }
-    .engine-badge { display:inline-block; padding:3px 10px; border-radius:999px; font-size:11.5px;
-      background:var(--red-soft); color:var(--red-dark); border:1px solid var(--line-strong); }
+    .engine-badge { display:inline-block; padding:4px 10px; border-radius:6px; font-size:11.5px;
+      background:var(--bg-2); color:var(--ink-2); border:1px solid var(--line); }
     .engine-badge.offline { background:var(--bg-2); color:var(--muted); border-color:var(--line); }
     .spec-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; margin:12px 0 16px; }
     .spec-cell { background:var(--bg-2); border:1px solid var(--line); border-radius:8px; padding:10px 12px; }
@@ -21,14 +21,14 @@
     .gap-list li { margin-bottom:8px; }
     .agent-section { margin-top:16px; padding:14px 16px; border:1px solid var(--line);
       border-radius:var(--radius); background:#fff; }
-    .agent-section h3 { margin:0 0 10px; font-size:15px; font-weight:800; }
+    .agent-section h3 { margin:0 0 10px; font-size:15px; font-weight:700; }
     .agent-section textarea { width:100%; margin:8px 0 12px; }
     .agent-actions { display:flex; gap:10px; flex-wrap:wrap; }
     .topo-preview { max-width:100%; border:1px solid var(--line); border-radius:var(--radius-sm);
       background:var(--bg-2); margin:6px 0 14px; }
     .mini-table { width:100%; border-collapse:collapse; font-size:12.5px; margin:8px 0 14px; }
     .mini-table th, .mini-table td { padding:7px 9px; border-bottom:1px solid var(--line); text-align:left; }
-    .mini-table th { color:var(--muted); font-weight:700; background:var(--bg-2); }
+    .mini-table th { color:var(--muted); font-weight:600; background:var(--panel-3); }
     .flow-note { font-size:11.5px; color:var(--muted); line-height:1.7; margin-top:10px; }
     .tool-list { margin:6px 0 0; padding-left:18px; font-size:12.5px; line-height:1.9; color:var(--ink-2); }
     .tool-list b { font-family:var(--mono); font-size:12px; }
@@ -36,7 +36,7 @@
     .tool-bad { color:var(--red-dark); }
     .history-list { display:flex; flex-direction:column; gap:10px; }
     .history-item { display:flex; gap:12px; align-items:flex-start; justify-content:space-between;
-      border:1px solid var(--line); border-radius:10px; padding:12px 14px; background:var(--bg-2); }
+      border:1px solid var(--line); border-radius:8px; padding:12px 14px; background:#fff; }
     .history-main { min-width:0; }
     .history-title { font-size:14px; font-weight:700; color:var(--ink); }
     .history-meta { font-size:11.5px; color:var(--muted); margin-top:4px; display:flex;
@@ -53,7 +53,7 @@
       padding:12px 14px; margin-bottom:14px; background:var(--bg-2); }
     .quote-head { display:flex; align-items:baseline; justify-content:space-between; gap:10px; }
     .quote-head h4, .edit-box h4 { margin:0 0 8px; font-size:13px; color:var(--ink); }
-    .quote-total { font-size:18px; font-weight:800; color:var(--red-dark); }
+    .quote-total { font-size:18px; font-weight:700; color:var(--red-dark); }
     .quote-box .mini-table { margin-top:6px; }
     .edit-box .mini-table { margin:8px 0 10px; }
     .edit-box input { width:100%; }
@@ -61,21 +61,21 @@
     .edit-devices .mini-table td { padding:4px 6px; }
     .reason-cell { font-size:11.5px; color:var(--muted); max-width:260px; }
     .nav-user { display:flex; align-items:center; gap:8px; font-size:12.5px; color:var(--muted); }
-    .nav-user .user-chip { display:flex; align-items:center; gap:8px; padding:6px 12px;
-      border:1px solid var(--line); border-radius:999px; background:var(--bg-2); }
+    .nav-user .user-chip { display:flex; align-items:center; gap:8px; padding:5px 11px;
+      border:1px solid var(--line); border-radius:6px; background:#fff; }
     .nav-user .user-chip b { color:var(--ink); font-weight:700; }
     .nav-user .link { background:none; border:0; padding:0; cursor:pointer;
       color:var(--red-dark); font-size:12.5px; font-weight:600; }
-    .nav-user .user-login { padding:6px 14px; border-radius:999px; border:1px solid var(--line);
-      background:var(--bg-2); color:var(--ink-2); font-weight:600; transition:all .18s ease; }
-    .nav-user .user-login:hover { border-color:var(--line-strong); color:var(--red); }
+    .nav-user .user-login { padding:5px 13px; border-radius:6px; border:1px solid var(--line);
+      background:#fff; color:var(--ink-2); font-weight:600; transition:all .15s ease; }
+    .nav-user .user-login:hover { border-color:var(--line-strong); color:var(--ink); }
     .pipe-steps { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px; }
-    .pipe-step { display:flex; align-items:center; gap:6px; padding:6px 11px; border-radius:999px;
-      border:1px solid var(--line); background:var(--bg-2); font-size:12px; color:var(--muted); }
+    .pipe-step { display:flex; align-items:center; gap:6px; padding:5px 10px; border-radius:6px;
+      border:1px solid var(--line); background:#fff; font-size:12px; color:var(--muted); }
     .pipe-step .pipe-dot { width:7px; height:7px; border-radius:50%; background:var(--line-strong); }
     .pipe-step.done { background:#fff; border-color:var(--line-strong); color:var(--ink); }
-    .pipe-step.done .pipe-dot { background:var(--red); }
-    .pipe-step.active { background:var(--red-soft); border-color:var(--red); color:var(--red-dark); }
+    .pipe-step.done .pipe-dot { background:var(--ok); }
+    .pipe-step.active { background:var(--red-soft); border-color:rgba(230,0,18,.35); color:var(--red-dark); }
     .pipe-step.active .pipe-dot { background:var(--red); animation:pipePulse 1.2s ease-in-out infinite; }
     .pipe-step.fail { border-color:var(--red-dark); color:var(--red-dark); }
     .pipe-step.fail .pipe-dot { background:var(--red-dark); }
@@ -102,7 +102,7 @@
       <a href="/rag">智能问答</a>
       <a href="/compare">竞品对比</a>
     </nav>
-    <div class="nav-status"><span class="dot"></span>LangGraph · 断点续跑</div>
+    <div class="nav-status"><span class="dot"></span>断网可用 · 断点续跑</div>
     <div class="nav-user" id="nav-user">
       <a class="user-login" href="/login">登录 / 注册</a>
     </div>
@@ -112,8 +112,8 @@
   <main class="workbench">
     <section class="hero">
       <div class="hero-text">
-        <span class="eyebrow">AGENT WORKFLOW · HUMAN IN THE LOOP</span>
-        <h1>会停下来<span class="hl">等你确认</span>的方案 Agent</h1>
+        <h1>方案工作台</h1>
+        <p>输入客户需求，自动完成场景识别、设备选型、报价测算与拓扑图；信息不足时列出待补充项。</p>
       </div>
       <nav class="steps" id="agent-steps" aria-label="Agent 流程">
         <button class="step active" data-step="1"><i>01</i><span>需求解析</span></button>
@@ -127,7 +127,6 @@
     <section class="card" id="input-card">
       <div class="card-head flex">
         <div>
-          <span class="eyebrow">Step 01 — Requirement</span>
           <h2>描述客户需求</h2>
         </div>
         <span class="engine-badge" id="engine-badge">正在检测引擎…</span>
@@ -149,9 +148,7 @@
           <button class="tpl-chip" data-tpl="2">商业综合体 · 停车场</button>
           <button class="tpl-chip" data-tpl="3">智慧电力 · 变电站/输电</button>
           <button class="tpl-chip" data-tpl="4">智慧交管 · 卡口/电警</button>
-        </div>
-        <div class="hint-row">
-          <button class="link" id="btn-demo">填入示例</button>
+          <button class="link" id="btn-demo" style="margin-left:4px">填入示例</button>
         </div>
         <div class="agent-actions" style="margin-top:14px">
           <button class="btn primary" id="btn-start">启动 Agent</button>
@@ -164,7 +161,6 @@
     <section class="card" id="history-card" hidden>
       <div class="card-head flex">
         <div>
-          <span class="eyebrow">History — Sessions</span>
           <h2>历史会话</h2>
         </div>
         <button class="btn ghost" id="btn-history-refresh">刷新</button>
@@ -177,7 +173,6 @@
 
     <section class="card" id="run-card" hidden>
       <div class="card-head">
-        <span class="eyebrow">Agent Run</span>
         <h2>运行状态与审阅</h2>
       </div>
       <div class="card-body">
@@ -260,8 +255,8 @@
             </div>
           </div>
           <div class="topo-switch">
-            <button class="topo-mode active" data-mode="simple">简略拓扑</button>
-            <button class="topo-mode" data-mode="detailed">详细连线</button>
+            <button class="topo-mode active" data-mode="simple">建议拓扑</button>
+            <button class="topo-mode" data-mode="detailed">工程拓扑</button>
           </div>
           <div class="topo-host" id="topo-host"></div>
           <div class="agent-actions">
@@ -294,14 +289,14 @@
           <li><b>选模板或自己写</b>：点击上方的「快速体验模板」一键填入典型需求；也可在文本框自由描述（如"周界80路、电梯20路、存储30天"）。</li>
           <li><b>启动 Agent</b>：点「启动 Agent」。系统先解析需求、自动选型、确定性测算存储/带宽。</li>
           <li><b>补信息 / 审阅</b>：信息不足会回问，按提示补充即可；方案出来后在审阅页改数字或写意见，会重新计算。</li>
-          <li><b>看拓扑图</b>：通过后默认看「简略拓扑」，点「详细连线」可切换到全配单互连图，看清每类设备用在哪、怎么连。</li>
-          <li><b>导出</b>：可下载 Word 方案、简略图、详细图，或点「导出当前图 PNG」保存正在看的那张。</li>
+          <li><b>看拓扑图</b>：通过后默认看「建议拓扑」，点「工程拓扑」可切换到三列工程建议图（前端采集 / 传输与存储 / 平台与显示），看清每类设备用在哪、怎么连。</li>
+          <li><b>导出</b>：可下载 Word 方案、建议拓扑图、工程拓扑图，或点「导出当前图 PNG」保存正在看的那张。</li>
         </ol>
       </div>
     </div>
   </div>
 
-  <script src="/static/topology.js?v=20261110-2450"></script>
-  <script src="/static/agent.js?v=20261112-1200"></script>
+  <script src="/static/topology.js?v=20261113-1000"></script>
+  <script src="/static/agent.js?v=20261113-1000"></script>
 </body>
 </html>
