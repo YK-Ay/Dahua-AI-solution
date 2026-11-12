@@ -207,6 +207,34 @@
     }).join("");
   }
 
+  function evidenceHtml(intent) {
+    var ev = intent.industry_evidence || {};
+    var parts = [];
+    if (ev.override) {
+      parts.push("行业「" + esc(intent.industry) + "」← 原文无行业特征，采纳 LLM 建议");
+    } else if (ev.fallback) {
+      parts.push("行业：原文未体现行业特征，按「" + esc(intent.industry) + "」通用口径");
+    } else {
+      parts.push("行业「" + esc(intent.industry) + "」← 命中词：" +
+        esc((ev.hits || []).join("、") || "—") + "（权重 " + fmt(ev.score) + "）");
+    }
+    var scenes = intent.scenes || [];
+    if (scenes.length) {
+      parts.push("场景 → 设备族：" + scenes.map(function (s) {
+        return esc(s.name) + " → " + esc(s.device_category || "—") +
+          (s.degrade === "report" ? "（专属缺失即报缺）" : "（专属缺失可降级）");
+      }).join("；"));
+    }
+    var rejected = intent.rejected_scenes || [];
+    if (rejected.length) {
+      parts.push("已排除：" + rejected.map(function (r) {
+        return esc(r.scene) + "（" + esc(r.reason) + "）";
+      }).join("；"));
+    }
+    return '<div class="muted" style="font-size:11.5px;margin-top:6px">判定链路：' +
+      parts.join("<br>") + "</div>";
+  }
+
   function intentHtml(intent) {
     if (!intent) return '<div class="pipe-empty">尚未完成：等待意图识别 Agent 解析需求。</div>';
     var reqs = intent.requirements || [];
@@ -230,6 +258,7 @@
       html += '<div class="muted" style="font-size:11.5px">假设：' +
         esc(intent.assumptions.join("；")) + "</div>";
     }
+    html += evidenceHtml(intent);
     return html;
   }
 
@@ -329,7 +358,8 @@
         "（数字来自原文，非大模型产出）";
     }
     if (p.industry_suggestion) {
-      note += "<br><b>LLM 行业建议</b>：" + esc(p.industry_suggestion) + "（仅提示，未改动分类口径）";
+      note += "<br><b>LLM 行业建议</b>：" + esc(p.industry_suggestion) +
+        (p.industry_override ? "（规则未命中，已采纳为兜底口径）" : "（仅提示，未改动分类口径）");
     }
     if (p.dropped_scenes && p.dropped_scenes.length) {
       note += "<br><b>已丢弃的不合规输出</b>：" + esc(p.dropped_scenes.join("、"));

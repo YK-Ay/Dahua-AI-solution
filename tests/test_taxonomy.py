@@ -9,13 +9,14 @@
 import sqlite3
 import unittest
 
-from app.builder import SpecGateError, build_spec, detect_industry, match_scenes
+from app.builder import SpecGateError, analyze, build_spec, detect_industry, match_scenes
 from app.builder import explicit_lanes
 from app.taxonomy import (
     FALLBACK_SCENE,
     GENERIC_CAMERA_CLASSES,
     INDUSTRIES,
     SCENES,
+    all_scenes,
     scene,
     industry_of,
 )
@@ -302,6 +303,125 @@ class ParserWhitelistTest(unittest.TestCase):
         self.assertIn("输电线路监测", parser.SCENE_NAMES)
         self.assertIn("道路卡口", parser.SCENE_NAMES)
         self.assertEqual(parser.FALLBACK_SCENE, FALLBACK_SCENE)
+
+
+class IndustryKeyCoverageTest(unittest.TestCase):
+    """逐个关键词验证行业表本身，而不是只测几条整句。"""
+
+    def test_top_weight_keys_classify_to_owner(self):
+        for industry, spec in INDUSTRIES.items():
+            top = max(spec["keys"].values())
+            for key, weight in spec["keys"].items():
+                if weight == top:
+                    self.assertEqual(industry_of(key)[0], industry,
+                                     f"关键词「{key}」应属于 {industry}")
+
+    def test_scores_accumulate_and_rank_desc(self):
+        industry, info = industry_of("变电站、输电、医院")
+        self.assertEqual(industry, "智慧电力")
+        self.assertEqual(info["score"], 10)          # 5 + 5
+        names = [r["industry"] for r in info["ranked"]]
+        self.assertEqual(names[:2], ["智慧电力", "智慧医疗"])
+        scores = [r["score"] for r in info["ranked"]]
+        self.assertEqual(scores, sorted(scores, reverse=True))
+
+    def test_hits_only_record_winner(self):
+        _, info = industry_of("变电站和医院")
+        self.assertIn("变电站", info["hits"])
+        self.assertNotIn("医院", info["hits"])
+        self.assertEqual(info["ranked"][1], {"industry": "智慧医疗", "score": 5})
+
+    def test_tie_breaks_by_table_order(self):
+        # 医院(5) 与 园区(5) 同分，按行业表顺序医疗在前
+        industry, info = industry_of("医院园区")
+        self.assertEqual(industry, "智慧医疗")
+        self.assertEqual([r["industry"] for r in info["ranked"]],
+                         ["智慧医疗", "智慧园区"])
+
+    def test_every_industry_maps_to_bom_industries(self):
+        for industry, texts in INDUSTRY_CASES.items():
+            plan = analyze(texts[0] + "，50路", retention_days=30)
+            self.assertEqual(plan.industry, industry, texts[0])
+            self.assertEqual(plan.industries, INDUSTRIES[industry]["bom_industries"])
+
+
+class SceneReachabilityTest(unittest.TestCase):
+    """场景表新增后，必须保证每个场景都能被自己的关键词触发。"""
+
+    def test_every_scene_reachable_by_first_key(self):
+        for s in SCENES:
+            industry = s["industries"][0] if s["industries"] else "智慧园区"
+            names = scene_names(s["keys"][0], industry)
+            self.assertIn(s["name"], names,
+                          f"{s['name']} 无法被关键词「{s['keys'][0]}」触发")
+
+    def test_all_scenes_fill_defaults(self):
+        full = all_scenes()
+        self.assertEqual(len(full), len(SCENES))
+        for s in full:
+            for key in ("industries", "capability_tags", "suppresses",
+                        "degrade", "exclusive", "fallback_only_with_lanes"):
+                self.assertIn(key, s, f"{s['name']} 缺少默认字段 {key}")
+
+    def test_unknown_scene_raises(self):
+        with self.assertRaises(KeyError):
+            scene("不存在的场景")
+
+    def test_foreign_scene_falls_back_to_public_area(self):
+        self.assertEqual(scene_names("博物馆文物库房", "智慧园区"), [FALLBACK_SCENE])
+
+    def test_generic_scenes_visible_in_every_industry(self):
+        for industry in INDUSTRIES:
+            names = scene_names("周界围墙和出入口，室内走廊", industry)
+            self.assertIn("周界围墙", names, industry)
+            self.assertIn("出入口", names, industry)
+            self.assertIn("室内区域", names, industry)
+
+    def test_industry_derived_when_not_passed(self):
+        self.assertIn("金库", scene_names("银行金库"))
+
+
+class LaneRuleTest(unittest.TestCase):
+    """路数归属的边界：离得太远、被标点隔开、同场景多次出现。"""
+
+    def test_gap_beyond_limit_not_attributed(self):
+        alloc = explicit_lanes("周界监控系统整体建设方案共计80路", [scene("周界围墙")])
+        self.assertNotIn("周界围墙", alloc)
+
+    def test_clause_separator_blocks_attribution(self):
+        self.assertEqual(explicit_lanes("周界，80路", [scene("周界围墙")]), {})
+
+    def test_repeated_scene_lanes_accumulate(self):
+        alloc = explicit_lanes("周界20路，周界30路", [scene("周界围墙")])
+        self.assertEqual(alloc["周界围墙"], 50)
+
+    def test_lanes_go_to_nearest_scene_word(self):
+        alloc = explicit_lanes("出入口周界80路",
+                               [scene("出入口"), scene("周界围墙")])
+        self.assertEqual(alloc.get("周界围墙"), 80)
+        self.assertNotIn("出入口", alloc)
+
+
+class AnalyzeTest(unittest.TestCase):
+    def test_requirements_carry_intent_bitrate_and_sum_to_total(self):
+        plan = analyze("某变电站安防项目，共50路；站区周界40路，配电房10路")
+        self.assertEqual(plan.total, 50)
+        by_target = {r.target: r for r in plan.requirements}
+        self.assertEqual(by_target["变电站站区"].intent, "站区周界与设备区监控")
+        self.assertEqual(by_target["变电站站区"].bitrate_mbps, 4.0)
+        self.assertEqual(by_target["配电房"].bitrate_mbps, 2.0)
+        self.assertEqual(sum(r.lanes for r in plan.requirements), plan.total)
+
+    def test_default_lanes_days_and_gaps(self):
+        plan = analyze("某园区周界监控")
+        self.assertEqual(plan.total, 50)
+        self.assertEqual(plan.days, 30)
+        self.assertTrue(any("默认 50 路" in g for g in plan.gaps))
+        self.assertTrue(any("默认 30 天" in g for g in plan.gaps))
+
+    def test_explicit_lanes_overrides_text(self):
+        plan = analyze("某园区周界20路", lanes=64)
+        self.assertEqual(plan.total, 64)
 
 
 if __name__ == "__main__":

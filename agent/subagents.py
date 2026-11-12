@@ -64,12 +64,14 @@ def run_intent(state: AgentState, parse_requirement) -> dict:
         "number_normalized": parsed.get("number_normalized") or [],
         "dropped_scenes": parsed.get("dropped_scenes") or [],
         "industry_suggestion": parsed.get("industry_suggestion"),
+        "industry_override": parsed.get("industry_override"),
         "warnings": parsed.get("warnings") or [],
     }
     name = state.get("name") or parsed.get("project_name")
     text = _apply_lanes_override(parsed.get("text") or raw_text, state.get("lanes"))
     try:
-        plan = analyze(text, state.get("lanes"), state.get("retention_days"))
+        plan = analyze(text, state.get("lanes"), state.get("retention_days"),
+                       industry_override=parsed.get("industry_override"))
     except (SpecGateError, ValueError) as exc:
         return {**_gate(exc), "parser": parser_info, "name": name,
                 "intent": None, "stage": "gate"}

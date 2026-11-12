@@ -96,6 +96,10 @@ INDUSTRIES: dict[str, dict] = {
 
 DEFAULT_INDUSTRY = "智慧园区"
 
+# 行业关键词总分低于该值时视为「线索较弱」：仍按命中的行业测算，
+# 但在缺口里提示人工确认行业，避免把偶然命中的弱词当成明确行业。
+INDUSTRY_LOW_SCORE = 3
+
 # ---------------------------------------------------------------- 场景定义
 
 # 字段说明：
@@ -106,6 +110,8 @@ DEFAULT_INDUSTRY = "智慧园区"
 #   degrade              "fallback" = 专属缺失时降级通用机型并标注；
 #                        "report"   = 专属缺失时直接报缺，不用通用机冒充
 #   rag_family           接入 RAG 选型时映射到的既有场景族；None 表示不走 RAG
+#   capability_tags      该场景真正需要的能力标签（app/capability.py），
+#                        用于跨类目选型与「选型依据」可解释
 #   suppresses           本场景命中时压掉其它场景（更具体的场景优先）
 #   fallback_only_with_lanes  只有原文明确给了该场景点位数才保留（避免抢路数）
 SCENES: list[dict] = [
@@ -121,6 +127,7 @@ SCENES: list[dict] = [
         "camera_keywords": ["枪型", "400万"],
         "device_category": "网络摄像机",
         "rag_family": "周界围墙",
+        "capability_tags": ["周界人车"],
     },
     {
         "name": "出入口",
@@ -157,6 +164,7 @@ SCENES: list[dict] = [
         "camera_keywords": ["半球", "400万"],
         "device_category": "网络摄像机",
         "rag_family": "电梯轿厢",
+        "capability_tags": ["电瓶车入梯"],
     },
     {
         "name": "室内区域",
@@ -224,6 +232,7 @@ SCENES: list[dict] = [
     # ---------------- 智慧电力 ----------------
     {
         "name": "输电线路监测",
+        "capability_tags": ["输电通道"],
         "keys": ["输电", "杆塔", "导线", "防外破", "电力线路", "线路通道"],
         "industries": ["智慧电力"],
         "intent": "输电通道防外破与本体监测",
@@ -238,6 +247,7 @@ SCENES: list[dict] = [
     },
     {
         "name": "变电设备测温",
+        "capability_tags": ["热成像测温"],
         "keys": ["测温", "红外测温", "发热", "温升", "设备测温"],
         "industries": ["智慧电力"],
         "intent": "变电设备热缺陷在线监测",
@@ -252,6 +262,7 @@ SCENES: list[dict] = [
     },
     {
         "name": "变电站站区",
+        "capability_tags": ["热成像测温", "周界人车"],
         "keys": ["变电站", "变电所", "升压站", "开关站", "换流站", "站区"],
         "industries": ["智慧电力"],
         "intent": "站区周界与设备区监控",
@@ -266,6 +277,7 @@ SCENES: list[dict] = [
     },
     {
         "name": "配电房",
+        "capability_tags": ["热成像测温"],
         "keys": ["配电房", "配电柜", "配电室", "开关柜", "环网柜", "电缆沟"],
         "industries": ["智慧电力", "智慧化工能源", "智慧园区", "智慧楼宇"],
         "intent": "配电设施状态与温度监测",
@@ -280,6 +292,7 @@ SCENES: list[dict] = [
     },
     {
         "name": "光伏储能站",
+        "capability_tags": ["热成像测温"],
         "keys": ["光伏", "储能", "风电", "风机"],
         "industries": ["智慧电力"],
         "intent": "新能源场站设备与周界监控",
@@ -295,6 +308,7 @@ SCENES: list[dict] = [
     # ---------------- 智慧交管 ----------------
     {
         "name": "道路卡口",
+        "capability_tags": ["车牌抓拍"],
         "keys": ["卡口", "过车", "车辆抓拍", "抓拍单元"],
         "industries": ["智慧交管"],
         "intent": "车辆过车抓拍与特征识别",
@@ -309,6 +323,7 @@ SCENES: list[dict] = [
     },
     {
         "name": "电子警察",
+        "capability_tags": ["车牌抓拍"],
         "keys": ["电子警察", "电警", "违法抓拍", "违章"],
         "industries": ["智慧交管"],
         "intent": "交通违法行为自动取证",
@@ -323,6 +338,7 @@ SCENES: list[dict] = [
     },
     {
         "name": "测速卡口",
+        "capability_tags": ["车牌抓拍"],
         "keys": ["测速", "区间测速", "超速"],
         "industries": ["智慧交管"],
         "intent": "机动车测速取证",
@@ -337,6 +353,7 @@ SCENES: list[dict] = [
     },
     {
         "name": "违停抓拍",
+        "capability_tags": ["车牌抓拍"],
         "keys": ["违停", "违法停车", "乱停"],
         "industries": ["智慧交管"],
         "intent": "违法停车自动抓拍",
@@ -363,6 +380,7 @@ SCENES: list[dict] = [
     },
     {
         "name": "停车出入口",
+        "capability_tags": ["车牌抓拍"],
         "keys": ["停车出入口", "道闸", "车牌识别", "车位引导"],
         "industries": [],
         "intent": "车辆出入控制与车牌识别",
@@ -391,6 +409,7 @@ SCENES: list[dict] = [
     # ---------------- 智慧化工能源 ----------------
     {
         "name": "防爆区域",
+        "capability_tags": ["防爆"],
         "keys": ["防爆", "爆炸性环境", "危险区", "危化", "化工", "油站",
                  "加油站", "油库", "罐区", "装卸区", "燃气"],
         "industries": ["智慧化工能源"],
@@ -404,6 +423,7 @@ SCENES: list[dict] = [
     },
     {
         "name": "管廊巡检",
+        "capability_tags": ["热成像测温"],
         "keys": ["管廊", "管线", "管道", "输送带", "传送带"],
         "industries": ["智慧化工能源", "智慧电力"],
         "intent": "管廊与输送线状态巡检",
@@ -417,6 +437,7 @@ SCENES: list[dict] = [
     },
     {
         "name": "气体泄漏监测",
+        "capability_tags": ["气体探测"],
         "keys": ["可燃气体", "有毒气体", "气体泄漏", "气体探测"],
         "industries": ["智慧化工能源", "智慧电力", "智慧园区"],
         "intent": "可燃有毒气体泄漏报警",
@@ -566,6 +587,7 @@ SCENES: list[dict] = [
     },
     {
         "name": "山林防火",
+        "capability_tags": ["热成像测温", "烟火检测"],
         "keys": ["山林", "森林", "防火", "林区", "山火"],
         "industries": ["文博景区", "智慧水利", "智慧电力"],
         "intent": "林区火情早期探测",
@@ -609,6 +631,7 @@ SCENES: list[dict] = [
     # ---------------- 智慧校园 ----------------
     {
         "name": "实验室危化",
+        "capability_tags": ["防爆"],
         "keys": ["实验室", "危化品", "化学品"],
         "industries": ["智慧校园"],
         "intent": "危化品存放与实验过程监控",
@@ -634,6 +657,7 @@ SCENE_DEFAULTS = {
     "require_price": True,
     "degrade": "fallback",
     "rag_family": None,
+    "capability_tags": [],
     "suppresses": [],
     "fallback_only_with_lanes": False,
     "exclusive": False,

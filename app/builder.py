@@ -11,6 +11,7 @@ import re
 from dataclasses import dataclass
 
 from .calc import calc_bandwidth, calc_storage, total_lanes
+from .capability import closest, describe, rank_candidates, tags_of
 from .kb import ProductRepo
 from .models import (
     Boundaries,
@@ -28,6 +29,7 @@ from .taxonomy import (
     FALLBACK_SCENE,
     GENERIC_CAMERA_CLASSES,
     INDUSTRIES as _INDUSTRIES,
+    INDUSTRY_LOW_SCORE,
     all_scenes,
     industry_of,
     scene as scene_def,
@@ -97,30 +99,49 @@ def detect_industry(text: str) -> tuple[str, list[str]]:
     return industry, tags
 
 
-def match_scenes(text: str, industry: str | None = None) -> list[dict]:
-    """行业感知的场景匹配。
+def match_scenes_detail(text: str, industry: str | None = None) -> tuple[list[dict], list[dict]]:
+    """行业感知的场景匹配，同时返回被淘汰的场景及原因。
 
     - 行业专属场景只在对应行业下参与匹配，避免「化工园区」把电力场景带进来；
     - 更具体的场景可压掉泛化场景（如 输电线路监测 压掉 周界围墙）；
-    - 兜底场景（公共区域）只有在原文明确给了点位数时才保留，避免抢路数。
+    - 兜底场景（公共区域）只有在原文明确给了点位数时才保留，避免抢路数；
+    - 被淘汰的场景带上原因，交给前端展示「为什么没选它」。
     """
     if industry is None:
         industry, _ = industry_of(text)
-    matched = [
-        r for r in SCENE_RULES
-        if any(k in text for k in r["keys"])
-        and (not r["industries"] or industry in r["industries"])
-    ]
+    rejected: dict[str, str] = {}
+    matched: list[dict] = []
+    for r in SCENE_RULES:
+        if not any(k in text for k in r["keys"]):
+            continue
+        if r["industries"] and industry not in r["industries"]:
+            rejected[r["name"]] = (
+                f"仅适用于{'/'.join(r['industries'])}，当前判定行业为「{industry}」"
+            )
+            continue
+        matched.append(r)
     names = {r["name"] for r in matched}
-    dropped: set[str] = set()
     for rule in matched:
-        dropped.update(s for s in rule["suppresses"] if s in names)
-    matched = [r for r in matched if r["name"] not in dropped]
+        for target in rule["suppresses"]:
+            if target in names:
+                rejected[target] = f"被更具体的「{rule['name']}」压制"
+    matched = [r for r in matched if r["name"] not in rejected]
     if len(matched) > 1:
         explicit = explicit_lanes(text, matched)
-        matched = [r for r in matched
-                   if not r["fallback_only_with_lanes"] or explicit.get(r["name"])]
-    return matched or [scene_def(FALLBACK_SCENE)]
+        kept: list[dict] = []
+        for r in matched:
+            if r["fallback_only_with_lanes"] and not explicit.get(r["name"]):
+                rejected[r["name"]] = "未给出该场景点位数，避免抢占其它场景路数"
+            else:
+                kept.append(r)
+        matched = kept
+    result = matched or [scene_def(FALLBACK_SCENE)]
+    return result, [{"scene": k, "reason": v} for k, v in rejected.items()]
+
+
+def match_scenes(text: str, industry: str | None = None) -> list[dict]:
+    """只要生效场景的兼容入口。"""
+    return match_scenes_detail(text, industry)[0]
 
 
 def _first_int(pattern: str, text: str) -> int | None:
@@ -214,6 +235,8 @@ class Plan:
     scale: Scale
     gaps: list[str]
     assumptions: list[str]
+    industry_evidence: dict
+    rejected_scenes: list[dict]
 
     def to_dict(self) -> dict:
         return {
@@ -229,6 +252,8 @@ class Plan:
             "scale": self.scale.model_dump(),
             "gaps": self.gaps,
             "assumptions": self.assumptions,
+            "industry_evidence": self.industry_evidence,
+            "rejected_scenes": self.rejected_scenes,
         }
 
     @classmethod
@@ -246,6 +271,8 @@ class Plan:
             scale=Scale(**(data.get("scale") or {})),
             gaps=list(data.get("gaps") or []),
             assumptions=list(data.get("assumptions") or []),
+            industry_evidence=dict(data.get("industry_evidence") or {}),
+            rejected_scenes=list(data.get("rejected_scenes") or []),
         )
 
 
@@ -286,21 +313,38 @@ def analyze(
     text: str,
     lanes: int | None = None,
     retention_days: int | None = None,
+    industry_override: str | None = None,
 ) -> Plan:
-    """意图识别：行业路由、场景识别、路数分配，产出结构化建设意图。"""
+    """意图识别：行业路由、场景识别、路数分配，产出结构化建设意图。
+
+    industry_override 只在规则引擎完全认不出行业（score=0）时生效，
+    用于采纳 LLM 的白名单行业建议；规则命中时仍以原文关键词为准。
+    """
     industry, info = industry_of(text)
+    if industry_override and industry_override in _INDUSTRIES and info["fallback"]:
+        info = {**info, "rule_industry": industry, "override": industry_override}
+        industry = industry_override
     tags = ["小区社区"] if industry == "智慧社区" else []
     industries = bom_industries(industry, tags)
-    scenes = match_scenes(text, industry)
+    scenes, rejected_scenes = match_scenes_detail(text, industry)
 
     parsed_total = _first_int(r"(\d+)\s*(?:路|个点位|台摄像机|摄像机|点位|个监控)", text)
     total = lanes or parsed_total or DEFAULT_LANES
     gaps: list[str] = []
     assumptions = ["码流按场景经验值估算，交付前需按实际设备型号核对"]
-    if info["fallback"]:
+    if info.get("override"):
+        assumptions.append(
+            f"原文未体现明确行业，按大模型建议的「{industry}」口径测算，需人工确认"
+        )
+    elif info["fallback"]:
         gaps.append(
             f"需求未体现行业特征，已按「{industry}」通用口径测算；"
             "如属电力、交通、化工、医疗等专业行业，请补充行业与场景"
+        )
+    elif info["score"] < INDUSTRY_LOW_SCORE:
+        gaps.append(
+            f"行业线索较弱（命中：{'、'.join(info['hits'])}），已按「{industry}」口径测算；"
+            "如属其他行业请确认"
         )
     if not lanes and not parsed_total:
         gaps.append(f"需求未写点位数，按默认 {DEFAULT_LANES} 路估算（可通过 --lanes 调整）")
@@ -336,7 +380,8 @@ def analyze(
     return Plan(text=text, industry=industry, tags=tags, industries=industries,
                 scenes=scenes, total=total, days=days, alloc=alloc,
                 requirements=requirements, scale=scale, gaps=gaps,
-                assumptions=assumptions)
+                assumptions=assumptions, industry_evidence=info,
+                rejected_scenes=rejected_scenes)
 
 
 def _pick_by_classes(
@@ -369,6 +414,7 @@ def select_cameras(repo: ProductRepo, plan: Plan) -> list[Device]:
         classes = rule["camera_classes"]
         keywords = rule["camera_keywords"]
         require_price = rule["require_price"]
+        cap_tags = rule["capability_tags"]
         generic = set(classes) <= GENERIC_CAMERA_CLASSES
 
         p: dict | None = None
@@ -390,6 +436,17 @@ def select_cameras(repo: ProductRepo, plan: Plan) -> list[Device]:
             if p:
                 basis = f"{where}按类目匹配（{'/'.join(classes)}）"
 
+        # 能力兜底：类目缺货时按能力标签找替代型号（先同类目，再跨类目）
+        if p is None and cap_tags:
+            for scope in (classes, []):
+                cands = rank_candidates(repo, scope, cap_tags,
+                                        require_price=require_price)
+                if cands:
+                    p = cands[0]
+                    where = "同类目" if scope else "跨类目"
+                    basis = f"{where}能力标签匹配（命中 {'、'.join(cands[0]['matched'])}）"
+                    break
+
         # 强专属场景：拿到通用机型等同于没找到，交给缺货策略处理
         if p is not None and rule["exclusive"] and p.get("class_name") in GENERIC_CAMERA_CLASSES:
             p = None
@@ -397,9 +454,16 @@ def select_cameras(repo: ProductRepo, plan: Plan) -> list[Device]:
         degraded = ""
         if p is None:
             if rule["degrade"] == "report":
+                hint = ""
+                if cap_tags:
+                    alts = closest(repo, cap_tags)
+                    if alts:
+                        hint = ("；库内能力最接近的替代型号（仅供参考，未自动使用）："
+                                + "、".join(describe(a) for a in alts[:3]))
                 raise SpecGateError([
                     f"「{req.target}」需要行业专属设备（{'/'.join(classes)}），"
                     "产品库中暂无可报价型号；该场景不做通用设备替代，请人工确认型号"
+                    + hint
                 ])
             fb_classes = [c for c in classes if c in GENERIC_CAMERA_CLASSES] or ["网络摄像机"]
             p = repo.pick_model(fb_classes, ["400万"])
@@ -412,6 +476,13 @@ def select_cameras(repo: ProductRepo, plan: Plan) -> list[Device]:
 
         if refs and p.get("year_new"):
             basis += f"（{p['year_new']} 上架）"
+        if cap_tags and "能力标签匹配" not in basis:
+            hits = [t for t in cap_tags if t in tags_of(repo, p["model"])]
+            if hits:
+                basis += f"；能力命中 {'、'.join(hits)}"
+            else:
+                basis += (f"；能力标签未命中（期望 {'、'.join(cap_tags)}，"
+                          "需人工确认是否满足）")
         reason = (f"{req.target} {req.lanes} 路 · {req.intent}；"
                   f"码流 {req.bitrate_mbps:g} Mbps；{basis}")
         if degraded:
@@ -603,12 +674,13 @@ def build_spec(
     plan: Plan | None = None,
     cameras: list[Device] | None = None,
     bom: Bom | None = None,
+    industry_override: str | None = None,
 ) -> Spec:
     """一站式构建；也可传入各子 Agent 的中间产物，避免重复计算。"""
     own_repo = repo is None
     repo = repo or ProductRepo()
     try:
-        plan = plan or analyze(text, lanes, retention_days)
+        plan = plan or analyze(text, lanes, retention_days, industry_override)
         cameras = list(cameras) if cameras is not None else select_cameras(repo, plan)
         bom = bom or plan_bom(repo, plan, cameras)
         return assemble_spec(plan, bom, name)

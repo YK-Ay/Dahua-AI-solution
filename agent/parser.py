@@ -6,7 +6,8 @@
 - LLM 只能从 SCENE_RULES 的固定白名单里选场景，不得编造场景或行业。
 - 归一化出来的场景词只在「规则引擎没认清需求」时补写进原文，且补写的
   只是场景名词，不含任何数字；补写后重新跑 match_scenes 得到真正生效的场景。
-- LLM 判断的行业只作为建议展示，不写回原文、不改动 detect_industry 口径。
+- 规则引擎完全认不出行业（关键词零命中）时，才采纳 LLM 的白名单行业建议
+  作为兜底口径；规则命中时仍以原文关键词为准。
 - 有 Key + 有网才调 LLM；无网 / 无 Key / 调用失败 / 超时，一律回退原文 + 规则
   引擎 / 本地追问模板，功能完全可用。
 
@@ -22,8 +23,13 @@ import threading
 
 import requests
 
-from app.builder import SCENE_RULES, detect_industry, match_scenes
-from app.taxonomy import FALLBACK_SCENE, INDUSTRIES as _INDUSTRY_TABLE
+from app.builder import SCENE_RULES, match_scenes
+from app.taxonomy import (
+    FALLBACK_SCENE,
+    INDUSTRIES as _INDUSTRY_TABLE,
+    INDUSTRY_LOW_SCORE,
+    industry_of,
+)
 from app.rag import config as C
 from app import netcheck
 
@@ -166,6 +172,7 @@ def parse_requirement(text: str, use_llm: bool = True) -> dict:
         "project_name": None,
         "industry": None,
         "industry_suggestion": None,
+        "industry_override": None,
         "normalized_scenes": [],
         "number_normalized": cn_changes,
         "dropped_scenes": [],
@@ -212,10 +219,24 @@ def parse_requirement(text: str, use_llm: bool = True) -> dict:
     })
     if dropped:
         result["warnings"].append("已丢弃不合规的 LLM 场景/字段：" + "、".join(dropped[:4]))
-    if industry and industry != detect_industry(original)[0]:
-        result["warnings"].append(
-            f"LLM 建议行业为「{industry}」，仅作提示；实际分类仍按原文关键词判定"
-        )
+    rule_industry, rule_info = industry_of(original)
+    if industry:
+        if rule_info["fallback"]:
+            # 规则引擎完全认不出行业时才采纳 LLM 建议；命中弱词则仍以原文为准
+            result["industry_override"] = industry
+            result["warnings"].append(
+                f"规则引擎未识别到行业，已采纳 LLM 行业建议「{industry}」作为兜底口径"
+            )
+        elif industry != rule_industry:
+            result["warnings"].append(
+                f"LLM 建议行业为「{industry}」，与原文关键词判定「{rule_industry}」不一致，"
+                "以原文为准"
+            )
+        elif rule_info["score"] < INDUSTRY_LOW_SCORE:
+            result["warnings"].append(
+                f"行业线索较弱（命中：{'、'.join(rule_info['hits'])}），"
+                f"已按「{rule_industry}」测算，请确认"
+            )
 
     # 归一化：把规则引擎没认出来的白名单场景补写进原文
     extra = [s for s in scenes if s not in baseline and s != FALLBACK_SCENE]
@@ -232,7 +253,8 @@ def parse_requirement(text: str, use_llm: bool = True) -> dict:
             "、".join(extra)
         )
     # 前端展示的是补写后真正生效的场景，而不是 LLM 自报的场景
-    result["scenes"] = [r["name"] for r in match_scenes(result["text"])]
+    effective = result["industry_override"] or rule_industry
+    result["scenes"] = [r["name"] for r in match_scenes(result["text"], effective)]
     return result
 
 

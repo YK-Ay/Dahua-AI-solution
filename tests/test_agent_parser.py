@@ -63,7 +63,8 @@ class NormalizeTest(OnlineMixin, unittest.TestCase):
         self.assertIsNone(r["project_name"])          # 含原文没有的数字，整个字段作废
         self.assertNotIn("智慧交管", r["text"])        # 行业只提示，不写回原文
         self.assertEqual(r["industry_suggestion"], "智慧交管")
-        self.assertTrue(any("仅作提示" in w for w in r["warnings"]))
+        self.assertIsNone(r["industry_override"])      # 规则已命中，不采纳 LLM 行业
+        self.assertTrue(any("以原文为准" in w for w in r["warnings"]))
 
     def test_no_overwrite_when_rules_already_confident(self):
         # 规则引擎已认出 2 个明确场景，LLM 再补的「停车场」视为臆测，不采纳
