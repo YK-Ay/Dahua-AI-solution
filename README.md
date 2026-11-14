@@ -1,54 +1,70 @@
 # 大华 AI 解决方案助手
 
-一个面向安防售前方案工程师的本地优先工具。它把自然语言项目需求转换为可审阅的方案草稿，并完成场景拆解、设备选型、存储/带宽测算、工程校验和方案包导出。
+面向安防售前方案工程师的本地 Web 工具。输入自然语言项目需求后，系统完成需求解析、场景拆解、设备选型、存储与网络测算、工程审查，并导出方案文档和设备清单。
 
-项目定位不是让大模型替代售前工程师，而是把重复、可验证的工作固化下来：
+项目强调“确定性计算 + 可追溯选型”：大模型只负责辅助理解和问答，点位、码流、容量、带宽、设备数量等关键数字由规则和公式计算。
 
-- 用规则和公式计算点位、码流、存储、带宽、NVR 通道和交换机端口；
-- 用产品库、公开案例和来源链接解释选型依据；
-- 对卡口、电警、事件检测、防爆、测温等行业专属场景，缺少可靠型号时明确报缺，不用普通摄像机冒充；
-- 把平台接口、算法授权、现场条件和商务价格等不能自动确认的事项列为人工复核项。
+## 功能
 
-## 当前能力
+- 自然语言需求解析与场景归一化；
+- 卡口、电警、违停抓拍、事件检测、防爆、测温等行业场景识别；
+- 产品库、方案库、案例库和竞品事实检索；
+- 摄像机、NVR、硬盘、交换机、平台和显示设备选型；
+- 存储容量、录像天数、NVR 通道、交换机端口和网络带宽测算；
+- 工程审查：缺口、风险、证据、平台接口和人工确认项；
+- Word、Excel、PPT、拓扑图、技术偏离表和方案 ZIP 导出；
+- Agent 工作流断点续跑、人工审阅和历史会话；
+- FastAPI 接口与 MCP Server。
 
-### 方案工作台
-
-输入一段自然语言需求，例如：
+## 系统架构
 
 ```text
-某城市交管项目，卡口20路，电警20路，违停抓拍20路，事件检测20路，录像保存180天。
+浏览器 Web 工作台
+        │
+        ▼
+FastAPI API 层（app/api.py）
+        │
+        ├── Agent 编排层（agent/）
+        │     ├── 需求解析 / 缺口追问
+        │     ├── 人工审阅 / 断点续跑
+        │     └── 工具调用与问答
+        │
+        ├── 方案构建层（app/builder.py）
+        │     ├── 行业与场景分类（app/taxonomy.py）
+        │     ├── 产品选型（app/selection.py）
+        │     ├── 计算与校验（app/calc.py、engineering_checks.py）
+        │     └── 方案、报价、偏离表导出
+        │
+        ├── 知识检索层（app/rag/、app/kb.py）
+        │     ├── 产品 / 方案 / 案例 / 竞品事实
+        │     └── SQLite + 本地 RAG 索引
+        │
+        └── 数据采集层（scraper/）
+              公开产品、案例和方案资料采集与清洗
 ```
 
-系统会生成结构化需求、设备清单、存储与网络测算、工程审查清单和待确认事项。支持中途暂停、人工审阅、修改后继续以及历史会话恢复。
+## 技术栈
 
-### 工程化校验
+- Python 3.12+；
+- FastAPI + Uvicorn：Web API 与静态页面服务；
+- SQLite：产品、方案、案例、竞品事实和会话存储；
+- Pydantic：结构化数据模型与校验；
+- LangGraph + SQLite Checkpoint：Agent 编排、人工介入和断点续跑；
+- Pillow：拓扑图绘制；
+- python-docx：Word 方案导出；
+- openpyxl：Excel 清单、容量表和工程审查表；
+- python-pptx：PPT 导出；
+- FastMCP：MCP 工具服务；
+- 原生 HTML / CSS / JavaScript：前端界面，无 CDN 依赖。
 
-- 点位数量与摄像机数量；
-- NVR 通道数和接入带宽；
-- NVR 盘位与硬盘数量；
-- 交换机端口、PoE 和上联带宽提示；
-- 存储容量、录像天数和冗余口径；
-- 交通平台接口、算法授权和联调边界；
-- 选型证据、产品来源和未闭合缺口。
-
-### 数据与输出
-
-系统支持本地 SQLite 知识库、RAG 检索、产品/案例/竞品事实查询、公开资料采集和离线降级。
-
-可输出：
-
-- Word 方案文档；
-- 设备报价表、存储与容量统计表；
-- 工程审查清单和技术偏离表；
-- 拓扑图和方案 ZIP 包。
+完整依赖版本见 [requirements.txt](requirements.txt)。
 
 ## 快速启动
 
-要求 Python 3.12+（本地开发使用 Python 3.14）。
+### Windows PowerShell
 
-```bash
+```powershell
 python -m venv .venv
-# Windows PowerShell
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 copy .env.example .env
@@ -56,42 +72,50 @@ python config/init_db.py
 python -m uvicorn app.api:app --host 127.0.0.1 --port 8080
 ```
 
-打开 <http://127.0.0.1:8080/agent>。无大模型密钥也可以运行确定性流程；离线开发建议在 `.env` 中设置 `APP_OFFLINE=1`。Windows 用户也可以运行 `web.bat`。
+打开 <http://127.0.0.1:8080/agent>。
 
-## 公开数据与私有数据边界
+也可以直接运行 `web.bat`。
 
-这个仓库按“代码公开、项目数据留本地”的原则整理。
-
-可以提交到 GitHub：
-
-- `app/`、`agent/`、`config/`、`scraper/`、`scripts/` 中的代码；
-- `tests/` 和 `data/benchmark_cases.json` 中的合成测试；
-- `db/schema.sql`、`.env.example`、CI 配置和公开开发文档；
-- 不含客户信息、价格和内部审批内容的规则说明。
-
-不要提交到 GitHub：
-
-- `.env`、API Key、Cookie、Bearer Token、账号密码或任何凭证；
-- `db/*.sqlite` 及备份文件：其中包含采集产品、竞品、方案和本地会话数据；
-- `data/` 下的原始网页、导出方案、截图、运行数据库、检查点和日志；
-- 客户招标文件、现场勘察表、真实点位表、网络拓扑、报价/成本/毛利和内部评审记录；
-- 从厂商站点下载的图片或未经确认可再分发的资料。
-
-`.gitignore` 已默认拦截上述内容，并仅放行合成基准文件 `data/benchmark_cases.json`。推送前执行：
+### Linux / macOS
 
 ```bash
-git status --short
-git diff -- . ':!*.sqlite'
-git check-ignore -v .env db/dahua_kb.sqlite data/exports/example.docx
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env
+python config/init_db.py
+python -m uvicorn app.api:app --host 127.0.0.1 --port 8080
 ```
 
-如果误把敏感文件加入暂存区，应先执行 `git restore --staged <file>`，再确认文件已被忽略。已经推送过的密钥不能只靠删除文件解决，必须立即撤销并重新生成。
+没有大模型密钥时，确定性方案流程仍可运行。离线开发可在 `.env` 中设置：
 
-## 重新建立本地知识库
+```dotenv
+APP_OFFLINE=1
+```
 
-空表只能验证应用结构，不能提供完整的产品和案例检索结果。需要数据时，请使用 `scraper/` 下的公开资料采集与导入脚本，或从受控的本地备份恢复数据库。不要把客户项目资料或登录后才能访问的内部数据上传到公共仓库。
+## 配置项
 
-公开资料采集应保留来源 URL、采集时间和用途说明；产品价格、授权状态和平台兼容性仍需在正式报价前以当前官方资料和项目条件复核。
+`.env.example` 提供完整配置模板：
+
+| 配置 | 作用 |
+|---|---|
+| `APP_OFFLINE` | 是否跳过联网探测和在线模型调用 |
+| `LLM_PROVIDER` | 模型提供方：`deepseek`、`bailian`、`doubao` |
+| `DEEPSEEK_API_KEY` | DeepSeek API 密钥 |
+| `DEEPSEEK_BASE_URL` | OpenAI 兼容接口地址 |
+| `DEEPSEEK_MODEL` | 模型名称 |
+| `BAILIAN_API_KEY` | 百炼备用模型密钥 |
+
+## 常用接口
+
+启动服务后可访问：
+
+- `/agent`：Agent 方案工作台；
+- `/kb`：产品、方案、案例知识库；
+- `/rag`：本地检索与问答；
+- `/compare`：大华与海康产品对比；
+- `/api/health`：健康检查；
+- `/docs`：FastAPI 自动生成的接口文档。
 
 ## 测试
 
@@ -100,7 +124,7 @@ python -m pytest tests/ -q
 python scripts/benchmark_cases.py
 ```
 
-合成基准覆盖校园、工业园区和城市交管三个方向。它用于验证规则稳定性和缺口暴露，不代表任何真实客户项目的正式设计。
+测试包含 API、Agent、计算、选型、RAG、导出、会话和前端静态资源检查。合成基准案例覆盖校园、工业园区和城市交管三个方向。
 
 ## 目录结构
 
@@ -111,11 +135,13 @@ config/       配置与数据库初始化
 scraper/      公开资料采集、清洗与导入脚本
 scripts/      离线检查、基准案例和维护脚本
 tests/        单元测试与接口测试
-web/static/   原生前端页面
-db/schema.sql 空数据库结构
-docs/         无密数据策略与售前工程说明
+web/static/   前端页面、样式和交互脚本
+db/schema.sql SQLite 数据库结构
+docs/         工程规则和发布说明
 ```
 
-## 免责声明
+## 运行说明
 
-本项目用于个人学习、工程方法验证和求职作品展示。产品型号、参数、案例和图片的知识产权归相应厂商或资料权利人所有。生成结果是方案草稿和审查辅助，不能替代厂家彩页核对、现场勘察、平台联调、商务询价和正式审批。
+`db/schema.sql` 和 `config/init_db.py` 用于初始化空数据库。空数据库可以启动应用和运行结构测试；要使用完整产品、方案、案例和竞品检索，需要另外准备本地知识库数据。
+
+本项目用于安防售前方案方法验证和个人学习。自动生成的结果属于方案草稿，正式项目仍需结合厂家彩页、现场勘察、平台联调、商务询价和内部审批进行复核。
