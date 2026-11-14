@@ -13,10 +13,12 @@ pydantic>=2.7
 # W3：渲染（拓扑图用 Pillow 自绘，Word 用 python-docx；不走 Graphviz，无需联网安装）
 pillow>=10.0
 python-docx>=1.1
+openpyxl>=3.1
 
 # W4：Web 服务（本地演示界面）
 fastapi>=0.111
 uvicorn>=0.30
+python-multipart>=0.0.9
 
 # W4：竞品采集（海康官网反爬需 TLS 指纹伪装）
 curl_cffi>=0.7

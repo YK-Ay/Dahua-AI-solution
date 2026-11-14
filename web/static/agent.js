@@ -17,7 +17,8 @@
     "某高速公路交管项目：卡口测速抓拍20路，电子警察15路，违停抓拍10路，存储90天。",
   ];
   var KEY = "dh_agent_thread";
-  var st = { thread_id: null, data: null, busy: false, spec: null, files: null, mode: "simple" };
+  var st = { thread_id: null, data: null, busy: false, spec: null, files: null,
+             mode: "simple", devThread: null };
 
   function $(id) { return document.getElementById(id); }
   function esc(s) {
@@ -92,7 +93,8 @@
 
     html += '<table class="mini-table"><thead><tr><th>类别</th><th>型号</th><th>数量</th><th>单价</th><th>选型依据</th></tr></thead><tbody>' +
       devs.map(function (d) {
-        return "<tr><td>" + esc(d.category) + "</td><td>" + esc(d.model) + "</td><td>" +
+        var model = d.source_url ? '<a href="' + esc(d.source_url) + '" target="_blank" rel="noopener">' + esc(d.model) + '</a>' : esc(d.model);
+        return "<tr><td>" + esc(d.category) + "</td><td>" + model + "</td><td>" +
           fmt(d.qty) + "</td><td>" + (d.unit_price == null ? "待询价" : "¥" + fmt(d.unit_price)) +
           '</td><td class="reason-cell">' + esc(d.reason || "—") + "</td></tr>";
       }).join("") + "</tbody></table>";
@@ -101,6 +103,18 @@
     if (gaps.length) {
       html += '<div class="muted" style="font-size:12px">待确认：' +
         gaps.map(esc).join("；") + "</div>";
+    }
+    var validation = st.data && st.data.validation;
+    if (validation) {
+      var levelClass = validation.level === "block" ? "danger" : (validation.level === "warn" ? "warn" : "ok");
+      html += '<div class="validation-box ' + levelClass + '"><div class="validation-head"><b>工程可信度：' +
+        esc(validation.label) + '</b><span>通过 ' + fmt(validation.summary.pass) + ' · 复核 ' +
+        fmt(validation.summary.warn) + ' · 阻断 ' + fmt(validation.summary.block) + '</span></div>';
+      html += (validation.items || []).map(function (v) {
+        var mark = v.level === "pass" ? "✓" : (v.level === "block" ? "!" : "△");
+        return '<div class="validation-item ' + esc(v.level) + '"><b>' + mark + ' ' + esc(v.title) +
+          '</b><span>' + esc(v.detail) + (v.action ? ' 建议：' + esc(v.action) : '') + '</span></div>';
+      }).join("") + '</div>';
     }
     return html;
   }
@@ -342,6 +356,18 @@
     $("rounds").textContent = fmt(d.rounds);
 
     var p = d.parser || {};
+    var vb = $("engineering-banner");
+    if (vb) {
+      var v = d.validation;
+      vb.hidden = !v;
+      if (v) {
+        var first = (v.items || []).filter(function (x) { return x.level !== "pass"; })[0];
+        vb.className = "engineering-banner " + (v.level || "warn");
+        vb.innerHTML = '<b>工程审查：' + esc(v.label) + '</b><span>通过 ' + fmt(v.summary.pass) +
+          ' · 需复核 ' + fmt(v.summary.warn) + ' · 阻断 ' + fmt(v.summary.block) + '</span>' +
+          (first ? '<em>' + esc(first.title) + '：' + esc(first.detail) + '</em>' : '');
+      }
+    }
     var engineText = {
       llm: "LLM 语义解析（数字仍由确定性算法核算）",
       rule: "本地规则解析（未配置大模型）",
@@ -414,9 +440,20 @@
       $("dl-png-detail").href = (d.files && d.files.png_detail) ? d.files.png_detail.url : "#";
       $("dl-docx").href = docx ? docx.url : "#";
       $("dl-pptx").href = (d.files && d.files.pptx) ? d.files.pptx.url : "#";
+      $("dl-package").href = (d.files && d.files.package) ? d.files.package.url : "#";
       fillEditForm(d.spec);
       loadQuote(d.thread_id);
       loadVersions(d.thread_id);
+      if (st.devThread !== d.thread_id) {
+        st.devThread = d.thread_id;
+        $("dev-text").value = "";
+        $("dev-file").value = "";
+        $("dev-file-name").textContent = "";
+        $("dev-tender").innerHTML = "";
+        $("dev-summary").innerHTML = "";
+        $("dev-table").innerHTML = "";
+        $("dev-actions").hidden = true;
+      }
     } else if (d.status === "aborted") {
       step(3);
       alertMsg("缺口回问超过上限，未生成半成品。缺口：" + (d.gaps || []).join("；"));
@@ -585,6 +622,116 @@
     }
   }
 
+  /* ---------- 读标（招标文件导入） ---------- */
+  function renderTender(t) {
+    var box = $("dev-tender");
+    if (!t) { box.innerHTML = ""; return; }
+    var p = t.project || {};
+    var info = [["项目名称", p.name], ["项目编号", p.code], ["采购人", p.buyer],
+                ["代理机构", p.agency], ["预算/限价", p.budget],
+                ["截止/开标", p.deadline || p.open_time], ["工期", p.duration]]
+      .filter(function (x) { return x[1]; });
+    var st = t.stats || {};
+    var html = "";
+    if (info.length) {
+      html += '<table class="mini-table"><tbody>' + info.map(function (x) {
+        return '<tr><th style="width:88px">' + x[0] + "</th><td>" + esc(x[1]) + "</td></tr>";
+      }).join("") + "</tbody></table>";
+    }
+    html += '<div class="muted" style="font-size:12px;margin:6px 0">识别：正文 ' +
+      fmt(st.chars) + " 字 · 技术条款 " + fmt(st.clauses) + " 条 · ★ " +
+      fmt(st.stars) + " 条</div>";
+
+    if ((t.scoring || []).length) {
+      html += '<div class="muted" style="font-size:12px;margin-top:8px">评分要素（表格转文本，需核对）</div>' +
+        '<table class="mini-table"><thead><tr><th>因素</th><th>权重</th><th>分值</th>' +
+        "<th>评分标准摘要</th></tr></thead><tbody>" +
+        t.scoring.map(function (s) {
+          return "<tr><td>" + esc(s.label) + "</td><td>" + esc(s.weight) + "</td><td>" +
+            esc(s.score || "-") + "</td><td>" + esc((s.criterion || "").slice(0, 60)) +
+            "</td></tr>";
+        }).join("") + "</tbody></table>";
+    }
+    if ((t.stars || []).length) {
+      html += '<details style="margin-top:8px"><summary style="cursor:pointer;font-size:13px">' +
+        "★ 参数 " + t.stars.length + ' 条（必查）</summary><table class="mini-table"><thead><tr>' +
+        "<th>#</th><th>参数</th><th>证明材料</th></tr></thead><tbody>" +
+        t.stars.map(function (s) {
+          return "<tr><td>" + s.no + "</td><td>" + esc(s.text) + "</td><td>" +
+            (s.need_proof ? "需提供" : "-") + "</td></tr>";
+        }).join("") + "</tbody></table></details>";
+    }
+    function group(title, list) {
+      if (!list || !list.length) { return ""; }
+      return '<details style="margin-top:8px"><summary style="cursor:pointer;font-size:13px">' +
+        title + " " + list.length + ' 条</summary><ol style="font-size:12.5px;line-height:1.75;' +
+        'padding-left:20px;margin:6px 0">' +
+        list.map(function (x) { return "<li>" + esc(x) + "</li>"; }).join("") +
+        "</ol></details>";
+    }
+    html += group("资格要求", t.qualification);
+    html += group("无效投标条款", t.invalid);
+    html += group("投标文件格式清单", t.formats);
+
+    if ((t.commercial || []).length) {
+      html += '<div style="margin-top:8px">' + t.commercial.map(function (c) {
+        return '<span class="badge same" style="margin-right:6px">' +
+          esc(c.label) + " " + esc(c.value) + "</span>";
+      }).join("") + "</div>";
+    }
+    if ((t.warnings || []).length) {
+      html += '<div class="muted" style="font-size:12px;margin-top:6px;line-height:1.7">' +
+        t.warnings.map(function (w) { return "· " + esc(w); }).join("<br>") + "</div>";
+    }
+    box.innerHTML = html;
+  }
+
+  /* ---------- 技术偏离表 ---------- */
+  function renderDev(d) {
+    renderTender(d.tender);
+    var s = d.summary || {};
+    $("dev-summary").innerHTML = "共 <b>" + fmt(s.total) + "</b> 条：<b>" +
+      fmt(s.respond) + "</b> 响应 · <b>" + fmt(s.negative) + "</b> 负偏离 · <b>" +
+      fmt(s.confirm) + "</b> 待确认";
+    var rows = d.rows || [];
+    $("dev-table").innerHTML = rows.length
+      ? '<table class="mini-table"><thead><tr><th>#</th><th>招标条款</th><th>结论</th>' +
+        "<th>响应说明</th><th>依据</th></tr></thead><tbody>" +
+        rows.map(function (r) {
+          var color = r.status === "negative" ? "var(--red-dark)"
+            : (r.status === "confirm" ? "#B26A00" : "var(--ok)");
+          return "<tr><td>" + r.index + "</td><td>" + esc(r.text) + "</td>" +
+            '<td><span style="color:' + color + ';font-weight:700">' +
+            esc(r.status_label) + "</span></td><td>" + esc(r.response) + "</td><td>" +
+            esc(r.evidence) + "</td></tr>";
+        }).join("") + "</tbody></table>"
+      : '<div class="muted" style="font-size:12px">未识别到条款</div>';
+    $("dev-dl").href = (d.file && d.file.url) || "#";
+    $("dev-actions").hidden = !(d.file && d.file.url);
+  }
+
+  async function submitDeviations(btn) {
+    if (!st.thread_id) { alertMsg("请先生成方案，再录入招标条款"); return; }
+    var fd = new FormData();
+    fd.append("text", $("dev-text").value.trim());
+    var f = $("dev-file").files[0];
+    if (f) fd.append("file", f);
+    if (!fd.get("text") && !f) { alertMsg("请粘贴条款，或选择 Excel / 招标文件"); return; }
+    busy(true, btn);
+    alertMsg("");
+    try {
+      var r = await fetch("/api/agent/" + encodeURIComponent(st.thread_id) + "/deviations",
+        { method: "POST", body: fd });
+      var d = await r.json().catch(function () { return {}; });
+      if (!r.ok) throw new Error((d.detail && d.detail.message) || ("HTTP " + r.status));
+      renderDev(d);
+    } catch (e) {
+      alertMsg("生成偏离表失败：" + e.message);
+    } finally {
+      busy(false, btn);
+    }
+  }
+
   async function loadStats() {
     try {
       var s = await api("/api/stats/overview");
@@ -603,6 +750,7 @@
       return '<div class="history-item" data-tid="' + esc(it.thread_id) + '">' +
         '<div class="history-main"><div class="history-title">' + esc(it.title) + "</div>" +
         '<div class="history-meta"><span>' + esc(STATUS_LABEL[it.status] || it.status) + "</span>" +
+        (it.stage ? "<span>阶段：" + esc(it.stage) + "</span>" : "") +
         (it.lanes ? "<span>" + fmt(it.lanes) + " 路</span>" : "") +
         (it.retention_days ? "<span>存储 " + fmt(it.retention_days) + " 天</span>" : "") +
         "<span>" + (it.version_count || 0) + " 个版本</span>" +
@@ -701,8 +849,40 @@
     } catch (e) { /* 接口不可用时保留静态入口 */ }
   }
 
+  async function importTender(btn) {
+    var input = $("tender-file");
+    var file = input.files && input.files[0];
+    if (!file) { input.click(); return; }
+    btn.disabled = true;
+    $("tender-status").textContent = "正在读取…";
+    try {
+      var fd = new FormData();
+      fd.append("file", file);
+      var r = await fetch("/api/tender/analyze", { method: "POST", body: fd });
+      var d = await r.json().catch(function () { return {}; });
+      if (!r.ok) throw new Error((d.detail && d.detail.message) || ("HTTP " + r.status));
+      $("demand").value = d.draft || "";
+      if (d.project && d.project.name) $("in-name").value = d.project.name;
+      var s = d.stats || {};
+      var warnings = (d.warnings || []).slice(0, 3);
+      $("tender-summary").hidden = false;
+      $("tender-summary").innerHTML = '<div class="muted" style="font-size:12px">已抽取 ' +
+        fmt(s.clauses || 0) + ' 条技术条款、' + fmt(s.stars || 0) + ' 条重点参数。' +
+        (warnings.length ? '<br>提醒：' + warnings.map(esc).join('；') : '') +
+        '<br><b>请检查上面的需求草稿后，再点击「启动 Agent」。</b></div>';
+      $("tender-status").textContent = "读取完成";
+    } catch (e) {
+      $("tender-status").textContent = "读取失败";
+      alertMsg("招标文件读取失败：" + e.message);
+    } finally { btn.disabled = false; }
+  }
+
   function init() {
     $("btn-demo").addEventListener("click", function () { $("demand").value = DEMO; });
+    $("btn-tender").addEventListener("click", function () { importTender(this); });
+    $("tender-file").addEventListener("change", function () {
+      if (this.files && this.files[0]) importTender($("btn-tender"));
+    });
 
     // 快速体验模板：点击填入典型需求
     document.querySelectorAll(".tpl-chip").forEach(function (chip) {
@@ -762,6 +942,12 @@
     loadMe();
     $("btn-edit-save").addEventListener("click", function () { saveEdit(this); });
     $("btn-pdf").addEventListener("click", function () { downloadPdf(this); });
+    $("btn-dev").addEventListener("click", function () { submitDeviations(this); });
+    $("btn-dev-file").addEventListener("click", function () { $("dev-file").click(); });
+    $("dev-file").addEventListener("change", function () {
+      var f = this.files && this.files[0];
+      $("dev-file-name").textContent = f ? f.name : "";
+    });
     $("history-list").addEventListener("click", function (e) {
       var btn = e.target.closest ? e.target.closest("[data-act]") : null;
       if (!btn) return;

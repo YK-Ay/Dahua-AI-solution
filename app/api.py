@@ -20,7 +20,7 @@ from datetime import datetime
 from pathlib import Path
 from urllib.parse import quote
 
-from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi import FastAPI, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -30,7 +30,7 @@ from config.settings import BASE_DIR, DB_PATH
 
 from .rag import service as rag_service
 from .compare import FIELDS, compare as compare_competitor, export_docx
-from . import auth, compare_service, metrics, netcheck, sessions
+from . import auth, compare_service, deviations, engineering_checks, metrics, netcheck, sessions, tender
 from .builder import SpecGateError
 from .quote import build_quote
 from agent import service as agent_service
@@ -343,7 +343,13 @@ def export_file(filename: str, request: Request, inline: int = 0) -> FileRespons
         raise HTTPException(status_code=403, detail={"message": "无权访问该文件", "gaps": []})
     if not inline:
         metrics.record("export", _cid(request), None, filename=safe)
-    media = DOCX_MIME if path.suffix.lower() == ".docx" else "image/png"
+    media = {
+        ".docx": DOCX_MIME,
+        ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        ".zip": "application/zip",
+        ".pdf": "application/pdf",
+    }.get(path.suffix.lower(), "image/png")
     if inline:
         return FileResponse(path, media_type=media)
     return FileResponse(path, media_type=media, filename=safe)
@@ -590,6 +596,51 @@ def api_agent_status() -> dict:
     return {"ok": True, **agent_parser_status(), "tools": agent_tools_status()}
 
 
+@app.post("/api/tender/analyze")
+async def api_tender_analyze(file: UploadFile = File(...)) -> dict:
+    """先读标再建方案：把招标文件解析成可直接回填到工作台的需求草稿。
+
+    这是售前真实工作流的入口。解析只抽取原文中能确认的内容，数字不做猜测；
+    生成的 draft 仍需用户审阅后再启动 Agent。
+    """
+    raw = await file.read()
+    try:
+        body = tender.read_text(file.filename or "招标文件", raw)
+    except tender.TenderError as exc:
+        raise HTTPException(status_code=400, detail={"message": str(exc)}) from exc
+    if not body.strip():
+        raise HTTPException(status_code=400, detail={"message": "文件没有可读取的文字内容"})
+    analysis = tender.analyze(body)
+    project = analysis.get("project") or {}
+    stars = analysis.get("stars") or []
+    clauses = analysis.get("clauses") or []
+    parts = []
+    if project.get("name"):
+        parts.append(f"项目：{project['name']}")
+    if project.get("site"):
+        parts.append(f"地点：{project['site']}")
+    if project.get("duration"):
+        parts.append(f"工期：{project['duration']}")
+    if stars:
+        parts.append("重点技术要求：" + "；".join(x["text"] for x in stars[:12]))
+    elif clauses:
+        parts.append("技术要求：" + "；".join(x["text"] for x in clauses[:12]))
+    draft = "。".join(parts).strip("。")
+    if not draft:
+        draft = "请根据招标文件中的技术要求，梳理视频监控点位、存储天数、平台和网络配置。"
+    return {
+        "filename": file.filename or "招标文件",
+        "draft": draft + "。",
+        "project": project,
+        "stars": stars,
+        "clauses": clauses,
+        "scoring": analysis.get("scoring") or [],
+        "commercial": analysis.get("commercial") or [],
+        "warnings": analysis.get("warnings") or [],
+        "stats": analysis.get("stats") or {},
+    }
+
+
 def _guard_thread(request: Request, thread_id: str) -> None:
     """会话归属校验：既不属于本浏览器、也不属于当前账号的 thread 按不存在处理。"""
     owner = sessions.owner_of(thread_id)
@@ -603,6 +654,37 @@ def _guard_thread(request: Request, thread_id: str) -> None:
     raise HTTPException(status_code=404, detail={"message": "会话不存在或已过期"})
 
 
+def _attach_product_evidence(data: dict) -> dict:
+    """给审阅页的每个型号补上产品库来源，便于人工点击核对。"""
+    spec = data.get("spec") or {}
+    devices = (spec.get("devices") or []) if isinstance(spec, dict) else []
+    models = [d.get("model") for d in devices if d.get("model")]
+    if not models:
+        return data
+    conn = sqlite3.connect(str(DB_PATH))
+    try:
+        marks = ",".join("?" for _ in models)
+        rows = conn.execute(
+            f"SELECT model, source_url, collected_at FROM products WHERE model IN ({marks})",
+            models,
+        ).fetchall()
+    finally:
+        conn.close()
+    evidence = {r[0]: {"url": r[1] or "", "collected_at": r[2] or ""} for r in rows}
+    for device in devices:
+        ev = evidence.get(device.get("model"))
+        if ev:
+            device["source_url"] = ev["url"]
+            device["source_collected_at"] = ev["collected_at"]
+    return data
+
+
+def _attach_engineering_validation(data: dict) -> dict:
+    if data.get("spec"):
+        data["validation"] = engineering_checks.evaluate(data["spec"], data.get("text") or "")
+    return data
+
+
 @app.post("/api/agent/start")
 def api_agent_start(req: AgentStartRequest, request: Request) -> dict:
     try:
@@ -612,6 +694,7 @@ def api_agent_start(req: AgentStartRequest, request: Request) -> dict:
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail={"message": str(exc)}) from exc
+    data = _attach_engineering_validation(_attach_product_evidence(data))
     cid = _cid(request)
     sessions.record(cid, data, user_id=_uid(request))
     metrics.record(metrics.START, cid, data.get("thread_id"))
@@ -625,6 +708,7 @@ def api_agent_state(thread_id: str, request: Request) -> dict:
         data = agent_service.state_of(thread_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail={"message": "会话不存在或已过期"}) from exc
+    data = _attach_engineering_validation(_attach_product_evidence(data))
     # 只读刷新不改变最近活动时间，避免历史列表顺序被打乱
     sessions.record(_cid(request), data, touch=False, user_id=_uid(request))
     return data
@@ -633,12 +717,28 @@ def api_agent_state(thread_id: str, request: Request) -> dict:
 @app.post("/api/agent/{thread_id}/resume")
 def api_agent_resume(thread_id: str, req: AgentResumeRequest, request: Request) -> dict:
     _guard_thread(request, thread_id)
+    # 正式生成前拦截高风险工程问题；普通复核/修改仍可继续。
+    if isinstance(req.answer, dict) and str(req.answer.get("decision") or "").lower() in {
+        "approve", "approved", "ok", "yes", "y", "通过", "同意", "确认"
+    }:
+        try:
+            current = agent_service.state_of(thread_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail={"message": "会话不存在或已过期"}) from exc
+        validation = engineering_checks.evaluate(current.get("spec") or {}, current.get("text") or "")
+        if validation.get("level") == "block":
+            blockers = [x["title"] for x in validation.get("items") or [] if x.get("level") == "block"]
+            raise HTTPException(status_code=409, detail={
+                "message": "方案存在必须先处理的工程问题：" + "、".join(blockers),
+                "validation": validation,
+            })
     try:
         data = agent_service.resume(thread_id, req.answer)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail={"message": "会话不存在或已结束"}) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail={"message": str(exc)}) from exc
+    data = _attach_engineering_validation(_attach_product_evidence(data))
     cid = _cid(request)
     sessions.record(cid, data, user_id=_uid(request))
     if data.get("status") == "done":
@@ -674,6 +774,7 @@ def api_agent_edit(thread_id: str, req: AgentEditRequest, request: Request) -> d
         gaps = getattr(exc, "gaps", None) or [str(exc)]
         raise HTTPException(status_code=400,
                             detail={"message": "；".join(gaps), "gaps": gaps}) from exc
+    data = _attach_engineering_validation(_attach_product_evidence(data))
     cid = _cid(request)
     sessions.record(cid, data, user_id=_uid(request))
     metrics.record("edit", cid, thread_id, fields=sorted(patch.keys()))
@@ -695,6 +796,88 @@ def api_agent_pdf(thread_id: str, request: Request) -> FileResponse:
     sessions.record(cid, data, user_id=_uid(request), version=False)
     metrics.record("export", cid, thread_id, kind="pdf")
     return FileResponse(pdf, media_type="application/pdf", filename=pdf.name)
+
+
+@app.post("/api/agent/{thread_id}/deviations")
+async def api_agent_deviations(
+    thread_id: str,
+    request: Request,
+    text: str = Form(""),
+    file: UploadFile | None = File(None),
+) -> dict:
+    """技术偏离表：粘贴招标条款，或上传 Excel / 招标文件 PDF / Word。"""
+    _guard_thread(request, thread_id)
+    try:
+        data = agent_service.state_of(thread_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail={"message": "会话不存在或已过期"}) from exc
+    spec = data.get("spec")
+    if not spec:
+        raise HTTPException(status_code=400, detail={"message": "会话还没有生成 Spec"})
+
+    source = "text"
+    analysis: dict | None = None
+    if file is not None and file.filename:
+        suffix = Path(file.filename).suffix.lower()
+        raw = await file.read()
+        if not raw:
+            raise HTTPException(status_code=400, detail={"message": "上传文件为空"})
+        if suffix in (".xlsx", ".xlsm"):
+            source = "excel"
+            try:
+                clauses = deviations.parse_xlsx(raw)
+            except Exception as exc:  # noqa: BLE001 —— 上传文件由用户提供，统一转成 400
+                raise HTTPException(
+                    status_code=400,
+                    detail={"message": f"Excel 解析失败：{type(exc).__name__}"},
+                ) from exc
+            if not clauses:
+                raise HTTPException(
+                    status_code=400,
+                    detail={"message": "未识别到条款，请确认表头含「条款 / 技术要求」"},
+                )
+        else:
+            source = "tender"
+            try:
+                body = tender.read_text(file.filename, raw)
+            except tender.TenderError as exc:
+                raise HTTPException(status_code=400, detail={"message": str(exc)}) from exc
+            analysis = tender.analyze(body)
+            clauses = analysis["clauses"] or deviations.parse_text(body)
+            if not clauses:
+                raise HTTPException(
+                    status_code=400,
+                    detail={"message": "没有从文件里抽出技术条款，请确认是招标文件正文"},
+                )
+    else:
+        analysis = tender.analyze(text) if len(text) >= 800 else None
+        clauses = (analysis or {}).get("clauses") or deviations.parse_text(text)
+        if not clauses:
+            raise HTTPException(status_code=400,
+                                detail={"message": "请粘贴招标条款，或上传 Excel / 招标文件"})
+
+    rows = deviations.evaluate(clauses, spec)
+    summary = deviations.summarize(rows)
+    scores = deviations.score_index(rows)
+    project_name = (spec.get("project") or {}).get("name") or "未命名方案"
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S%f")[:-3]
+    name = f"{_safe_name(project_name)}-{stamp}-技术偏离表.xlsx"
+    deviations.render_xlsx(rows, summary, project_name, scores, EXPORT_DIR / name)
+
+    cid = _cid(request)
+    sessions.register_exports(cid, thread_id, [name], _uid(request))
+    sessions.set_stage(cid, thread_id, "投标技术复核", _uid(request))
+    metrics.record("deviations", cid, thread_id, count=len(rows), source=source)
+    result = {
+        "rows": rows,
+        "summary": summary,
+        "scores": scores,
+        "file": {"name": name, "url": "/api/export/" + quote(name)},
+    }
+    if analysis is not None:
+        # clauses 已经转成 rows，不再重复回传，避免响应体过大
+        result["tender"] = {k: v for k, v in analysis.items() if k != "clauses"}
+    return result
 
 
 @app.get("/api/stats/overview")

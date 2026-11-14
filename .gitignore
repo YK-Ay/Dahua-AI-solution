@@ -46,3 +46,8 @@ Thumbs.db
 
 # ===== 本地工作区记忆 =====
 .workbuddy/
+
+# Public synthetic regression fixture; all other runtime data stays ignored.
+!data/
+data/*
+!data/benchmark_cases.json

@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     user_id      TEXT,
     title        TEXT NOT NULL,
     status       TEXT NOT NULL,
+    stage        TEXT NOT NULL DEFAULT '需求整理',
     text         TEXT NOT NULL DEFAULT '',
     lanes        INTEGER,
     retention_days INTEGER,
@@ -85,6 +86,20 @@ def _ensure_columns(conn: sqlite3.Connection) -> None:
     cols = {row[1] for row in conn.execute("PRAGMA table_info(exports)")}
     if "user_id" not in cols:
         conn.execute("ALTER TABLE exports ADD COLUMN user_id TEXT")
+    session_cols = {row[1] for row in conn.execute("PRAGMA table_info(sessions)")}
+    if "stage" not in session_cols:
+        conn.execute("ALTER TABLE sessions ADD COLUMN stage TEXT NOT NULL DEFAULT '需求整理'")
+
+
+def stage_of(data: dict) -> str:
+    status = (data or {}).get("status") or ""
+    if status == "done":
+        return "方案已生成"
+    if status == "awaiting_input":
+        return "等待人工审阅"
+    if status == "aborted":
+        return "已中止"
+    return "方案设计中"
 
 
 def reset_for_tests() -> None:
@@ -203,17 +218,17 @@ def record(client_id: str, data: dict, touch: bool = True,
         ).fetchone()
         if row is None:
             conn.execute(
-                "INSERT INTO sessions(thread_id, client_id, user_id, title, status, text, "
+                "INSERT INTO sessions(thread_id, client_id, user_id, title, status, stage, text, "
                 "lanes, retention_days, spec_json, files_json, created_at, updated_at) "
-                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
-                (thread_id, client_id, uid, title, data.get("status") or "running",
+                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (thread_id, client_id, uid, title, data.get("status") or "running", stage_of(data),
                  data.get("text") or "", lanes, days, _dumps(spec), _dumps(files), now, now),
             )
             title_now = title
         elif row["client_id"] == client_id or (uid and str(row["user_id"] or "") == uid):
-            sets = ("title=?, status=?, text=?, lanes=?, retention_days=?, "
+            sets = ("title=?, status=?, stage=?, text=?, lanes=?, retention_days=?, "
                     "spec_json=?, files_json=?, user_id=COALESCE(user_id, ?)")
-            params: list = [row["title"], data.get("status") or "running",
+            params: list = [row["title"], data.get("status") or "running", stage_of(data),
                             data.get("text") or "", lanes, days,
                             _dumps(spec), _dumps(files), uid]
             if touch:
@@ -269,6 +284,7 @@ def _session_item(row: sqlite3.Row) -> dict:
         "thread_id": row["thread_id"],
         "title": row["title"],
         "status": row["status"],
+        "stage": row["stage"] if "stage" in row.keys() else "需求整理",
         "lanes": row["lanes"],
         "retention_days": row["retention_days"],
         "created_at": row["created_at"],
@@ -316,6 +332,23 @@ def rename_session(client_id: str, thread_id: str, title: str,
         )
         if cur.rowcount:
             conn.execute("UPDATE versions SET title=? WHERE thread_id=?", (title, thread_id))
+        return bool(cur.rowcount)
+
+
+def set_stage(client_id: str, thread_id: str, stage: str,
+              user_id: int | str | None = None) -> bool:
+    """更新项目阶段，不改动方案内容和版本。"""
+    stage = " ".join((stage or "").split())[:30]
+    if not stage:
+        raise ValueError("阶段不能为空")
+    uid = _uid_str(user_id)
+    where = "(client_id=? OR user_id=?)" if uid else "client_id=?"
+    params: list = [stage, _now(), thread_id, client_id] + ([uid] if uid else [])
+    with _lock, _conn() as conn:
+        cur = conn.execute(
+            f"UPDATE sessions SET stage=?, updated_at=? WHERE thread_id=? AND {where}",
+            params,
+        )
         return bool(cur.rowcount)
 
 

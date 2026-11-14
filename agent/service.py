@@ -9,10 +9,8 @@
 """
 from __future__ import annotations
 
-import re
 import threading
 import uuid
-from datetime import datetime
 from pathlib import Path
 from urllib.parse import quote
 
@@ -21,10 +19,8 @@ from langgraph.types import Command
 from agent import graph as G
 from app.edit import apply_edit
 from app.models import Spec
+from app.package import build_deliverables
 from app.pdf import docx_to_pdf
-from app.ppt import render_pptx
-from app.topology import render_topology
-from app.word import render_docx
 
 _lock = threading.RLock()
 _graph = None
@@ -146,26 +142,9 @@ def resume(thread_id: str, answer) -> dict:
     return serialize(state, thread_id)
 
 
-def _safe_name(name: str) -> str:
-    cleaned = re.sub(r'[\\/:*?"<>|\s]+', "_", name).strip("_")
-    return cleaned or "未命名方案"
-
-
 def render_outputs(spec: Spec) -> dict:
-    """按 Spec 重新渲染全部交付物（拓扑简略/详细、Word、PPT）。"""
-    G.EXPORT_DIR.mkdir(parents=True, exist_ok=True)
-    stamp = datetime.now().strftime("%Y%m%d-%H%M%S%f")[:-3]
-    stem = _safe_name(spec.project.name)
-    png = G.EXPORT_DIR / f"{stem}-{stamp}-拓扑-简略.png"
-    png_detail = G.EXPORT_DIR / f"{stem}-{stamp}-拓扑-详细.png"
-    docx = G.EXPORT_DIR / f"{stem}-{stamp}.docx"
-    pptx = G.EXPORT_DIR / f"{stem}-{stamp}.pptx"
-    render_topology(spec, png, mode="simple")
-    render_topology(spec, png_detail, mode="detailed")
-    render_docx(spec, docx, topology_png=png)
-    render_pptx(spec, pptx)
-    return {"png": str(png), "png_detail": str(png_detail),
-            "docx": str(docx), "pptx": str(pptx)}
+    """按 Spec 重新渲染全部交付物（Word / Excel / 拓扑 / PPT / 方案包）。"""
+    return build_deliverables(spec, G.EXPORT_DIR)
 
 
 def edit_outputs(thread_id: str, patch: dict) -> dict:

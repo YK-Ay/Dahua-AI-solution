@@ -360,7 +360,8 @@ SCENES: list[dict] = [
         "level": "中",
         "bitrate": 6.0,
         "camera_classes": ["行业球机产品", "分销球机", "网络摄像机"],
-        "camera_keywords": ["球机", "400万"],
+        # 行业球机/网络摄像机公开型号命名不统一，优先按类目筛选。
+        "camera_keywords": [],
         "require_price": False,
         "device_category": "违停抓拍单元",
         "degrade": "fallback",
@@ -373,7 +374,8 @@ SCENES: list[dict] = [
         "level": "中",
         "bitrate": 6.0,
         "camera_classes": ["行业球机产品", "网络摄像机"],
-        "camera_keywords": ["球机", "400万"],
+        # 算法能力不能由外观关键词替代，具体授权与能力在工程审查中确认。
+        "camera_keywords": [],
         "require_price": False,
         "device_category": "事件检测相机",
         "degrade": "report",

@@ -121,9 +121,14 @@ def match_scenes_detail(text: str, industry: str | None = None) -> tuple[list[di
             continue
         matched.append(r)
     names = {r["name"] for r in matched}
+    # 只有在被压制场景没有独立路数时才合并。招标/需求文本经常同时写
+    # “卡口20路、电警20路”，此时必须保留两类前端，不能把 40 路都归到电警。
+    explicit = explicit_lanes(text, matched)
     for rule in matched:
         for target in rule["suppresses"]:
-            if target in names:
+            # 仅当压制方和被压制方都各自写了路数时才并列保留；
+            # “站区周界40路”这类短语仍应归给更具体的站区场景。
+            if target in names and not (explicit.get(target) and explicit.get(rule["name"])):
                 rejected[target] = f"被更具体的「{rule['name']}」压制"
     matched = [r for r in matched if r["name"] not in rejected]
     if len(matched) > 1:

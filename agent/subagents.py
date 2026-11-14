@@ -14,7 +14,6 @@ Agent 都只做一件事，并且只把结构化结果写回 state：
 from __future__ import annotations
 
 import re
-from datetime import datetime
 
 from app.builder import (
     Bom,
@@ -26,9 +25,7 @@ from app.builder import (
 )
 from app.kb import ProductRepo
 from app.models import Device, Spec
-from app.ppt import render_pptx
-from app.topology import render_topology
-from app.word import render_docx
+from app.package import build_deliverables
 
 from .state import AgentState
 
@@ -141,24 +138,9 @@ def run_solution(state: AgentState, build_spec, validate_spec) -> dict:
 
 # ---------------------------------------------------------------- 产物
 def run_deliver(state: AgentState, export_dir) -> dict:
-    """审阅通过后渲染拓扑 PNG、Word、PPT；产物仍由确定性函数生成。"""
+    """审阅通过后渲染 Word / Excel / 拓扑 / PPT，并打包成方案包 ZIP。"""
     spec = Spec.model_validate(state["spec"])
-    export_dir.mkdir(parents=True, exist_ok=True)
-    stamp = datetime.now().strftime("%Y%m%d-%H%M%S%f")[:-3]
-    stem = _safe_name(spec.project.name)
-    png = export_dir / f"{stem}-{stamp}-拓扑-简略.png"
-    png_detail = export_dir / f"{stem}-{stamp}-拓扑-详细.png"
-    docx = export_dir / f"{stem}-{stamp}.docx"
-    pptx = export_dir / f"{stem}-{stamp}.pptx"
-    render_topology(spec, png, mode="simple")
-    render_topology(spec, png_detail, mode="detailed")
-    render_docx(spec, docx, topology_png=png)
-    render_pptx(spec, pptx)
-    return {"outputs": {"png": str(png), "png_detail": str(png_detail),
-                        "docx": str(docx), "pptx": str(pptx)},
-            "stage": "done"}
-
-
-def _safe_name(name: str) -> str:
-    cleaned = re.sub(r'[\\/:*?"<>|\s]+', "_", name).strip("_")
-    return cleaned or "未命名方案"
+    output_dir = export_dir
+    output_dir.mkdir(parents=True, exist_ok=True)
+    outputs = build_deliverables(spec, output_dir)
+    return {"outputs": outputs, "stage": "done"}
