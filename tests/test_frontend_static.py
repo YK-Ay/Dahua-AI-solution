@@ -45,6 +45,11 @@ class FrontendStaticTest(unittest.TestCase):
         missing = sorted(used - declared)
         self.assertEqual(missing, [], f"agent.html 缺少这些 id：{missing}")
 
+    def test_pointlist_result_renders_scene_breakdown(self):
+        js = (STATIC / "agent.js").read_text(encoding="utf-8")
+        self.assertIn("s.by_scene", js)
+        self.assertIn("pointlist-summary", js)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -890,12 +890,18 @@
       var d = await r.json().catch(function () { return {}; });
       if (!r.ok) throw new Error((d.detail && d.detail.message) || ("HTTP " + r.status));
       $("demand").value = d.draft || "";
+      if (d.summary && d.summary.lanes) $("in-lanes").value = d.summary.lanes;
       if (d.summary && d.summary.retention_days) $("in-days").value = d.summary.retention_days;
       var s = d.summary || {};
       var warnings = (d.warnings || []).slice(0, 3);
+      var byScene = (s.by_scene || []).map(function (item) {
+        return '<tr><td>' + esc(item.scene || "未命名场景") + '</td><td>' +
+          fmt(item.qty || 0) + ' 路</td></tr>';
+      }).join("");
       $("pointlist-summary").hidden = false;
       $("pointlist-summary").innerHTML = '<div class="muted" style="font-size:12px">已识别 ' +
         fmt(s.rows || 0) + ' 行、' + fmt(s.scenes || 0) + ' 个场景、' + fmt(s.lanes || 0) + ' 路。' +
+        (byScene ? '<table class="mini-table" style="margin-top:8px"><thead><tr><th>场景</th><th>数量</th></tr></thead><tbody>' + byScene + '</tbody></table>' : '') +
         (warnings.length ? '<br>提醒：' + warnings.map(esc).join('；') : '') +
         '<br><b>需求草稿已回填，请检查后再点击「启动 Agent」。</b></div>';
       $("pointlist-status").textContent = "导入完成";
