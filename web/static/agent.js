@@ -877,11 +877,43 @@
     } finally { btn.disabled = false; }
   }
 
+  async function importPointlist(btn) {
+    var input = $("pointlist-file");
+    var file = input.files && input.files[0];
+    if (!file) { input.click(); return; }
+    btn.disabled = true;
+    $("pointlist-status").textContent = "正在解析…";
+    try {
+      var fd = new FormData();
+      fd.append("file", file);
+      var r = await fetch("/api/pointlist/analyze", { method: "POST", body: fd });
+      var d = await r.json().catch(function () { return {}; });
+      if (!r.ok) throw new Error((d.detail && d.detail.message) || ("HTTP " + r.status));
+      $("demand").value = d.draft || "";
+      if (d.summary && d.summary.retention_days) $("in-days").value = d.summary.retention_days;
+      var s = d.summary || {};
+      var warnings = (d.warnings || []).slice(0, 3);
+      $("pointlist-summary").hidden = false;
+      $("pointlist-summary").innerHTML = '<div class="muted" style="font-size:12px">已识别 ' +
+        fmt(s.rows || 0) + ' 行、' + fmt(s.scenes || 0) + ' 个场景、' + fmt(s.lanes || 0) + ' 路。' +
+        (warnings.length ? '<br>提醒：' + warnings.map(esc).join('；') : '') +
+        '<br><b>需求草稿已回填，请检查后再点击「启动 Agent」。</b></div>';
+      $("pointlist-status").textContent = "导入完成";
+    } catch (e) {
+      $("pointlist-status").textContent = "导入失败";
+      alertMsg("点位表导入失败：" + e.message);
+    } finally { btn.disabled = false; }
+  }
+
   function init() {
     $("btn-demo").addEventListener("click", function () { $("demand").value = DEMO; });
     $("btn-tender").addEventListener("click", function () { importTender(this); });
     $("tender-file").addEventListener("change", function () {
       if (this.files && this.files[0]) importTender($("btn-tender"));
+    });
+    $("btn-pointlist").addEventListener("click", function () { importPointlist(this); });
+    $("pointlist-file").addEventListener("change", function () {
+      if (this.files && this.files[0]) importPointlist($("btn-pointlist"));
     });
 
     // 快速体验模板：点击填入典型需求

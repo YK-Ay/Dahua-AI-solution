@@ -30,7 +30,7 @@ from config.settings import BASE_DIR, DB_PATH
 
 from .rag import service as rag_service
 from .compare import FIELDS, compare as compare_competitor, export_docx
-from . import auth, compare_service, deviations, engineering_checks, metrics, netcheck, sessions, tender
+from . import auth, compare_service, deviations, engineering_checks, metrics, netcheck, pointlist, sessions, tender
 from .builder import SpecGateError
 from .quote import build_quote
 from agent import service as agent_service
@@ -639,6 +639,16 @@ async def api_tender_analyze(file: UploadFile = File(...)) -> dict:
         "warnings": analysis.get("warnings") or [],
         "stats": analysis.get("stats") or {},
     }
+
+
+@app.post("/api/pointlist/analyze")
+async def api_pointlist_analyze(file: UploadFile = File(...)) -> dict:
+    """点位表 Excel → 场景汇总和可直接审阅的需求草稿。"""
+    raw = await file.read()
+    try:
+        return pointlist.parse_xlsx(raw, file.filename or "点位表.xlsx")
+    except pointlist.PointListError as exc:
+        raise HTTPException(status_code=400, detail={"message": str(exc), "gaps": []}) from exc
 
 
 def _guard_thread(request: Request, thread_id: str) -> None:

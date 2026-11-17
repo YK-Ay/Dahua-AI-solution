@@ -160,6 +160,13 @@
           <button class="btn ghost" id="btn-tender">读取招标文件</button>
           <span id="tender-status" class="muted" style="font-size:12px;margin-left:8px"></span>
           <div id="tender-summary" hidden style="margin-top:10px"></div>
+          <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--line,#e5e9ef)">
+            <div class="muted" style="font-size:12px;margin-bottom:7px">已有点位表？上传 Excel，自动汇总区域、场景、路数和录像天数。</div>
+            <input id="pointlist-file" type="file" accept=".xlsx,.xlsm" hidden>
+            <button class="btn ghost" id="btn-pointlist">导入点位表</button>
+            <span id="pointlist-status" class="muted" style="font-size:12px;margin-left:8px"></span>
+            <div id="pointlist-summary" hidden style="margin-top:10px"></div>
+          </div>
         </div>
         <div class="grid-3">
           <label class="field"><span>项目名（可选）</span><input id="in-name" type="text" placeholder="留空自动命名"></label>
