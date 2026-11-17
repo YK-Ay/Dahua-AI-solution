@@ -126,7 +126,7 @@ python -m pytest tests/ -q
 python scripts/benchmark_cases.py
 ```
 
-测试包含 API、Agent、计算、选型、RAG、导出、会话和前端静态资源检查。合成基准案例覆盖校园、工业园区和城市交管三个方向。
+本地准备完整知识库后，上述命令会运行完整回归套件。公开仓库不提交产品、方案和竞品的本地 SQLite 数据，因此 GitHub Actions 在没有 `db/dahua_kb.sqlite` 时运行不依赖私有数据的公开测试；准备好本地知识库后会自动切换为全量测试。合成基准案例覆盖校园、工业园区和城市交管三个方向。
 
 ## 目录结构
 
