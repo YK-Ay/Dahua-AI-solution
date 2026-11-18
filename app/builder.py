@@ -324,6 +324,7 @@ class Bom:
     lanes_total: int
     gaps: list[str]
     assumptions: list[str]
+    calculation_basis: list[str]
 
     def to_dict(self) -> dict:
         return {
@@ -333,6 +334,7 @@ class Bom:
             "lanes_total": self.lanes_total,
             "gaps": self.gaps,
             "assumptions": self.assumptions,
+            "calculation_basis": self.calculation_basis,
         }
 
     @classmethod
@@ -344,6 +346,7 @@ class Bom:
             lanes_total=int(data.get("lanes_total") or 0),
             gaps=list(data.get("gaps") or []),
             assumptions=list(data.get("assumptions") or []),
+            calculation_basis=list(data.get("calculation_basis") or []),
         )
 
 
@@ -675,6 +678,13 @@ def plan_bom(repo: ProductRepo, plan: Plan, cameras: list[Device]) -> Bom:
         f"NVR 按 {NVR_CHANNELS} 路/台、硬盘按 {DISK_CAPACITY_TB}TB/块折算",
         "上行带宽按路数码流之和 × 1.2 并发系数估算",
     ])
+    calculation_basis = [
+        f"存储：各场景路数 × 码流 × 10.5469 GB/天/路 × {plan.days} 天 ÷ 1024 = {storage['raw_tb']} TB",
+        f"冗余：{storage['raw_tb']} TB × {storage['redundancy']} = {storage['with_redundancy_tb']} TB",
+        f"带宽：各场景路数 × 码流之和 × 1.2 并发系数 = {bandwidth} Mbps",
+        f"NVR：{lanes_total} 路 ÷ {NVR_CHANNELS} 路/台，向上取整 = {nvr_qty} 台",
+        f"硬盘：{storage['with_redundancy_tb']} TB ÷ {DISK_CAPACITY_TB} TB/块，向上取整 = {disk_qty} 块",
+    ]
     if screens > 1:
         assumptions.append(
             f"电视墙按总点位 {lanes_total} 路分级为 {cols}×{rows}，"
@@ -682,7 +692,8 @@ def plan_bom(repo: ProductRepo, plan: Plan, cameras: list[Device]) -> Bom:
         )
 
     return Bom(devices=devices, storage=storage, bandwidth=bandwidth,
-               lanes_total=lanes_total, gaps=gaps, assumptions=assumptions)
+               lanes_total=lanes_total, gaps=gaps, assumptions=assumptions,
+               calculation_basis=calculation_basis)
 
 
 def assemble_spec(plan: Plan, bom: Bom, name: str | None = None) -> Spec:

@@ -321,6 +321,11 @@
         return "<tr><td>" + esc(d.category) + "</td><td>" + esc(d.model) + "</td><td>" +
           fmt(d.qty) + '</td><td class="reason-cell">' + esc(d.reason || "—") + "</td></tr>";
       }).join("") + "</tbody></table>";
+    if ((bom.calculation_basis || []).length) {
+      html += '<div class="muted" style="font-size:11.5px;margin-top:9px"><b>计算依据：</b>' +
+        bom.calculation_basis.map(function (x) { return '<div>· ' + esc(x) + '</div>'; }).join("") +
+        "</div>";
+    }
     return html;
   }
 
