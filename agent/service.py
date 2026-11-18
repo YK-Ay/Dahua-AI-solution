@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import threading
 import uuid
+import re
 from pathlib import Path
 from urllib.parse import quote
 
@@ -21,6 +22,7 @@ from app.edit import apply_edit
 from app.models import Spec
 from app.package import build_deliverables
 from app.pdf import docx_to_pdf
+from app import auto_fix
 
 _lock = threading.RLock()
 _graph = None
@@ -159,6 +161,36 @@ def edit_outputs(thread_id: str, patch: dict) -> dict:
             raise ValueError("会话还没有可编辑的 Spec")
         current = Spec.model_validate(values["spec"])
         spec = apply_edit(current, values.get("text") or "", patch)
+        outputs = render_outputs(spec)
+        graph.update_state(_cfg(thread_id), {"spec": spec.model_dump(), "outputs": outputs})
+        snap = graph.get_state(_cfg(thread_id))
+    return serialize(snap, thread_id)
+
+
+def auto_fix_outputs(thread_id: str) -> dict:
+    """执行确定性的自动修正，并重新渲染当前方案。"""
+    with _lock:
+        graph = get_graph()
+        snap = graph.get_state(_cfg(thread_id))
+        values = _values_of(snap)
+        if not values or not values.get("spec"):
+            raise KeyError("会话还没有可修正的 Spec")
+        current = Spec.model_validate(values["spec"])
+        patch = auto_fix.storage_patch(current.model_dump())
+        if not patch:
+            raise ValueError("当前工程阻断项没有可安全自动修正的参数")
+        spec = apply_edit(current, values.get("text") or "", {"devices": [patch]})
+        nvr = next((d for d in spec.devices if d.category in ("NVR", "通用存储录像机")), None)
+        if nvr:
+            nvr.reason = (f"AI 自动修正：硬盘 {patch['disk_qty']} 块 ÷ "
+                          f"{patch['slots']} 盘位/台，调整为 {nvr.qty} 台；请复核存储架构")
+        for device in spec.devices:
+            if device.category in ("综合平台", "平台服务器"):
+                device.reason = re.sub(r"\d+ 台 NVR", f"{nvr.qty if nvr else patch['old_qty']} 台 NVR", device.reason)
+        note = (f"AI 自动修正：按 {patch['slots']} 盘位/台，将 NVR 从 {patch['old_qty']} 台调整为 "
+                f"{patch['index'] and nvr.qty} 台以容纳 {patch['disk_qty']} 块硬盘；需人工复核设备成本与机房容量")
+        if note not in spec.boundaries.assumptions:
+            spec.boundaries.assumptions.append(note)
         outputs = render_outputs(spec)
         graph.update_state(_cfg(thread_id), {"spec": spec.model_dump(), "outputs": outputs})
         snap = graph.get_state(_cfg(thread_id))

@@ -5,6 +5,32 @@
 """
 from __future__ import annotations
 
+import math
+import re
+
+
+def storage_patch(spec: dict) -> dict:
+    """对可确定的 NVR 盘位不足问题生成设备数量修正。"""
+    devices = spec.get("devices") or []
+    nvr_idx = next((i for i, d in enumerate(devices)
+                    if d.get("category") in ("NVR", "通用存储录像机")), None)
+    disk_qty = sum(int(d.get("qty") or 0) for d in devices
+                   if d.get("category") in ("机械硬盘", "硬盘"))
+    if nvr_idx is None or disk_qty <= 0:
+        return {}
+    nvr = devices[nvr_idx]
+    text = " ".join(str(nvr.get(k) or "") for k in ("model", "display_name"))
+    match = re.search(r"(?:HDS?|盘位|硬盘位)[-_ ]?(\d{1,2})", text, re.I)
+    slots = int(match.group(1)) if match else None
+    if not slots:
+        return {}
+    current = int(nvr.get("qty") or 0)
+    target = max(current, math.ceil(disk_qty / slots))
+    if target <= current:
+        return {}
+    return {"index": nvr_idx + 1, "qty": target, "slots": slots,
+            "disk_qty": disk_qty, "old_qty": current}
+
 
 def suggestions(validation: dict) -> dict:
     items = validation.get("items") or []

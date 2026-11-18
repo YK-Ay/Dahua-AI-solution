@@ -780,11 +780,15 @@ def api_agent_auto_fix(thread_id: str, request: Request) -> dict:
     except KeyError as exc:
         raise HTTPException(status_code=404, detail={"message": "会话不存在或已过期"}) from exc
     validation = engineering_checks.evaluate(current.get("spec") or {}, current.get("text") or "")
-    proposal = auto_fix.suggestions(validation)
-    proposal["validation"] = validation
-    if not proposal["safe"]:
-        raise HTTPException(status_code=409, detail={"message": proposal["message"], "auto_fix": proposal})
-    return current
+    try:
+        data = agent_service.auto_fix_outputs(thread_id)
+    except (KeyError, ValueError) as exc:
+        proposal = auto_fix.suggestions(validation)
+        proposal["validation"] = validation
+        raise HTTPException(status_code=409, detail={"message": str(exc), "auto_fix": proposal}) from exc
+    data = _attach_engineering_validation(_attach_product_evidence(data))
+    sessions.record(_cid(request), data, user_id=_uid(request))
+    return data
 
 
 @app.get("/api/agent/{thread_id}/quote")
