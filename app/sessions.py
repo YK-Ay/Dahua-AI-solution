@@ -135,12 +135,13 @@ def _lanes_of(spec: dict) -> int:
     return sum(int(r.get("lanes") or 0) for r in (spec or {}).get("requirements") or [])
 
 
-def _summary_of(spec: dict, files: dict) -> dict:
+def _summary_of(spec: dict, files: dict, audit: dict | None = None,
+                validation: dict | None = None) -> dict:
     devices = (spec or {}).get("devices") or []
     total_price = sum(
         float(d.get("unit_price") or 0) * int(d.get("qty") or 0) for d in devices
     )
-    return {
+    summary = {
         "lanes": _lanes_of(spec),
         "retention_days": ((spec or {}).get("storage") or {}).get("retention_days"),
         "devices": len(devices),
@@ -148,6 +149,15 @@ def _summary_of(spec: dict, files: dict) -> dict:
         "price": round(total_price, 2),
         "files": sorted(files.keys()),
     }
+    if audit:
+        summary["audit"] = audit
+    if validation:
+        summary["validation"] = {
+            "level": validation.get("level"),
+            "label": validation.get("label"),
+            "summary": validation.get("summary") or {},
+        }
+    return summary
 
 
 def _register_exports(conn: sqlite3.Connection, client_id: str, thread_id: str | None,
@@ -172,7 +182,8 @@ def _owner_clause(user_id: str | None) -> tuple[str, list]:
 
 
 def _record_version(conn: sqlite3.Connection, thread_id: str, title: str,
-                    spec: dict, files: dict) -> dict | None:
+                    spec: dict, files: dict, audit: dict | None = None,
+                    validation: dict | None = None) -> dict | None:
     """同一份产物（文件清单完全相同）不重复记版本；审阅后重新生成才 +1。"""
     files_json = _dumps(files)
     last = conn.execute(
@@ -183,7 +194,7 @@ def _record_version(conn: sqlite3.Connection, thread_id: str, title: str,
     if last and last["files_json"] == files_json:
         return None
     no = int(last["version_no"]) + 1 if last else 1
-    summary = _summary_of(spec, files)
+    summary = _summary_of(spec, files, audit=audit, validation=validation)
     created = _now()
     conn.execute(
         "INSERT INTO versions(thread_id, version_no, title, spec_json, files_json, "
@@ -242,7 +253,9 @@ def record(client_id: str, data: dict, touch: bool = True,
         _register_exports(conn, client_id, thread_id, files, uid)
         made = None
         if version and data.get("status") == "done" and files:
-            made = _record_version(conn, thread_id, title_now, spec, files)
+            made = _record_version(conn, thread_id, title_now, spec, files,
+                                   audit=data.get("auto_fix_log"),
+                                   validation=data.get("validation"))
     return made
 
 
