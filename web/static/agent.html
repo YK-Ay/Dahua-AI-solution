@@ -261,9 +261,11 @@
             <textarea id="review-feedback" rows="2" placeholder="例如：增加停车场 10 路"></textarea>
           </div>
           <div class="agent-actions">
+            <button class="btn ghost" id="btn-auto-fix">AI 自动修正并重算</button>
             <button class="btn primary" id="btn-approve">通过并生成</button>
             <button class="btn ghost" id="btn-revise">按修改重新计算</button>
           </div>
+          <div class="muted" style="font-size:11.5px;margin-top:7px">AI 自动修正只处理确定性输入；涉及盘位、容量、协议和设备架构时，会给出建议并保留手动修改入口。</div>
           <div class="flow-note">改数字会写回 Agent 状态并触发条件回边重新调用确定性计算，不会靠大模型猜数。</div>
         </div>
 

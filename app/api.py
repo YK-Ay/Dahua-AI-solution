@@ -30,7 +30,7 @@ from config.settings import BASE_DIR, DB_PATH
 
 from .rag import service as rag_service
 from .compare import FIELDS, compare as compare_competitor, export_docx
-from . import auth, compare_service, deviations, engineering_checks, metrics, netcheck, pointlist, requirement_review, sessions, tender
+from . import auth, auto_fix, compare_service, deviations, engineering_checks, metrics, netcheck, pointlist, requirement_review, sessions, tender
 from .builder import SpecGateError
 from .quote import build_quote
 from agent import service as agent_service
@@ -769,6 +769,22 @@ def api_agent_resume(thread_id: str, req: AgentResumeRequest, request: Request) 
     if data.get("status") == "done":
         metrics.record(metrics.APPROVE, cid, thread_id)
     return data
+
+
+@app.post("/api/agent/{thread_id}/auto-fix")
+def api_agent_auto_fix(thread_id: str, request: Request) -> dict:
+    """AI 自动修正入口：安全项自动处理，架构项返回建议供人工修改。"""
+    _guard_thread(request, thread_id)
+    try:
+        current = agent_service.state_of(thread_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail={"message": "会话不存在或已过期"}) from exc
+    validation = engineering_checks.evaluate(current.get("spec") or {}, current.get("text") or "")
+    proposal = auto_fix.suggestions(validation)
+    proposal["validation"] = validation
+    if not proposal["safe"]:
+        raise HTTPException(status_code=409, detail={"message": proposal["message"], "auto_fix": proposal})
+    return current
 
 
 @app.get("/api/agent/{thread_id}/quote")

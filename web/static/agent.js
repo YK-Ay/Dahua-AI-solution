@@ -547,6 +547,26 @@
     finally { busy(false, btn); }
   }
 
+  async function autoFix(btn) {
+    if (!st.thread_id) { alertMsg("没有进行中的会话"); return; }
+    busy(true, btn);
+    alertMsg("");
+    try {
+      var d = await api("/api/agent/" + encodeURIComponent(st.thread_id) + "/auto-fix", { method: "POST" });
+      render(d);
+    } catch (e) {
+      var proposal = e.payload && e.payload.detail && e.payload.detail.auto_fix;
+      if (e.status === 409 && proposal) {
+        var lines = (proposal.suggestions || []).map(function (x) { return "· " + x; }).join("\n");
+        alertMsg((proposal.message || "AI 无法安全自动修改") + (lines ? "\n" + lines : "") + "\n请使用下方手动修改后重新计算。");
+        var fields = $("ed-lanes");
+        if (fields) fields.scrollIntoView({ behavior: "smooth", block: "center" });
+      } else {
+        alertMsg("AI 修正失败：" + e.message);
+      }
+    } finally { busy(false, btn); }
+  }
+
   async function restore(tid, silent) {
     if (!tid) { if (!silent) alertMsg("没有可恢复的会话"); return; }
     try {
@@ -1061,6 +1081,7 @@
     $("btn-approve").addEventListener("click", function () {
       resume({ decision: "approve" }, this);
     });
+    $("btn-auto-fix").addEventListener("click", function () { autoFix(this); });
     $("btn-revise").addEventListener("click", function () {
       var s = st.data && st.data.spec;
       if (!s) return;
