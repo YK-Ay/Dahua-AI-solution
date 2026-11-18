@@ -36,7 +36,12 @@
   async function api(url, opts) {
     var r = await fetch(url, opts);
     var d = await r.json().catch(function () { return {}; });
-    if (!r.ok) throw new Error((d.detail && d.detail.message) || ("HTTP " + r.status));
+    if (!r.ok) {
+      var err = new Error((d.detail && d.detail.message) || ("HTTP " + r.status));
+      err.status = r.status;
+      err.payload = d;
+      throw err;
+    }
     return d;
   }
   function post(url, body) {
@@ -525,7 +530,20 @@
       var d = await post("/api/agent/" + encodeURIComponent(st.thread_id) + "/resume",
         { answer: answer });
       render(d);
-    } catch (e) { alertMsg("继续失败：" + e.message); }
+    } catch (e) {
+      var validation = e.payload && e.payload.detail && e.payload.detail.validation;
+      if (e.status === 409 && validation) {
+        // 工程硬阻断不是静默失败：保留审阅页并把原因展示到工程审查栏。
+        var current = st.data || {};
+        current.validation = validation;
+        render(current);
+        alertMsg("暂不能生成：" + (e.message || "方案存在必须先处理的工程问题") + "。请先调整配置或确认工程口径。");
+        var banner = $("engineering-banner");
+        if (banner) banner.scrollIntoView({ behavior: "smooth", block: "center" });
+      } else {
+        alertMsg("继续失败：" + e.message);
+      }
+    }
     finally { busy(false, btn); }
   }
 
