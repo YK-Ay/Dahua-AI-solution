@@ -283,14 +283,19 @@
     (sel.devices || []).forEach(function (dv) { byScene[dv.scene] = dv; });
     if (!scenes.length) return '<div class="pipe-empty">没有需要选型的场景。</div>';
     return '<table class="mini-table"><thead><tr><th>场景</th><th>点位数</th>' +
-      "<th>选中型号</th><th>选型依据</th></tr></thead><tbody>" +
+      "<th>选中型号</th><th>选型依据</th><th>证据/替代</th></tr></thead><tbody>" +
       scenes.map(function (s) {
         var dv = byScene[s.target] || {};
         var desc = dv.display_name && dv.display_name !== s.model
           ? '<div class="muted" style="font-size:11px">' + esc(dv.display_name) + "</div>" : "";
+        var evidence = (dv.evidence || []).length
+          ? "参考：" + dv.evidence.map(esc).join("、")
+          : "暂无案例引用";
+        if ((dv.alternatives || []).length) evidence += "<br>替代：" + dv.alternatives.map(esc).join("、");
         return "<tr><td>" + esc(s.target) + "</td><td>" + fmt(s.lanes) + "</td>" +
           "<td>" + esc(s.model) + desc + "</td>" +
-          '<td class="reason-cell">' + esc(s.reason || "—") + "</td></tr>";
+          '<td class="reason-cell">' + esc(s.reason || "—") + "</td>" +
+          '<td class="reason-cell">' + evidence + "</td></tr>";
       }).join("") + "</tbody></table>";
   }
 

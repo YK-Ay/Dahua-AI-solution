@@ -306,6 +306,10 @@ class SelectionIndex:
             "refs": refs,
             "basis": basis,
             "evidence": sorted(sources)[:3],
+            "alternatives": [
+                {"model": p["model"], "display_name": p.get("display_name") or ""}
+                for p in cands[1:3]
+            ],
             "engine": {
                 "family": family,
                 "docs": len(self.docs),

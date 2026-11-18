@@ -458,6 +458,9 @@ def select_cameras(repo: ProductRepo, plan: Plan) -> list[Device]:
         p: dict | None = None
         refs = 0
         basis = ""
+        evidence: list[str] = []
+        alternatives: list[str] = []
+        selection_engine: dict = {}
         if generic:
             sel = select_camera(
                 repo, rule["rag_family"] or req.target, intent=req.intent,
@@ -467,6 +470,9 @@ def select_cameras(repo: ProductRepo, plan: Plan) -> list[Device]:
                 p = sel["product"]
                 refs = sel["refs"]
                 basis = sel["basis"]
+                evidence = sel.get("evidence") or []
+                alternatives = [x["model"] for x in sel.get("alternatives") or [] if x.get("model")]
+                selection_engine = sel.get("engine") or {}
 
         if p is None:
             p, where = _pick_by_classes(repo, classes, keywords,
@@ -533,6 +539,9 @@ def select_cameras(repo: ProductRepo, plan: Plan) -> list[Device]:
             display_name=p["display_name"],
             unit_price=p["price_stand"],
             reason=reason,
+            evidence=evidence,
+            alternatives=alternatives,
+            selection_engine=selection_engine,
         ))
     return devices
 

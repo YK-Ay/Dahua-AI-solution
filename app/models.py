@@ -41,6 +41,9 @@ class Device(BaseModel):
     display_name: str = ""
     unit_price: float | None = None
     reason: str = ""          # 选型依据（场景/点位/配单来源），写入审阅页与 Word
+    evidence: list[str] = Field(default_factory=list)  # 参考方案/中标项目名称
+    alternatives: list[str] = Field(default_factory=list)  # 同轮候选，供人工复核
+    selection_engine: dict = Field(default_factory=dict)  # 召回与放宽记录
 
 
 class Storage(BaseModel):
