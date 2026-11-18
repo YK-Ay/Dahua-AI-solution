@@ -448,6 +448,7 @@
       st.files = d.files;
       st.mode = "simple";
       $("done-panel").hidden = false;
+      if (d.auto_fix_log && d.auto_fix_log.message) alertMsg(d.auto_fix_log.message);
       drawTopo();
       var png = d.files && d.files.png;
       var docx = d.files && d.files.docx;
