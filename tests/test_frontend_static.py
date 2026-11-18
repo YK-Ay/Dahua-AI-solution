@@ -50,6 +50,12 @@ class FrontendStaticTest(unittest.TestCase):
         self.assertIn("s.by_scene", js)
         self.assertIn("pointlist-summary", js)
 
+    def test_requirement_review_control_is_wired(self):
+        html = (STATIC / "agent.html").read_text(encoding="utf-8")
+        js = (STATIC / "agent.js").read_text(encoding="utf-8")
+        self.assertIn('id="btn-review-requirement"', html)
+        self.assertIn("/api/requirements/review", js)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -481,6 +481,32 @@
     finally { busy(false, btn); }
   }
 
+  async function reviewRequirement(btn) {
+    var text = $("demand").value.trim();
+    if (!text) { alertMsg("请先填写需求描述"); return; }
+    busy(true, btn);
+    try {
+      var d = await post("/api/requirements/review", {
+        text: text,
+        project_name: $("in-name").value.trim() || null,
+        lanes: intOr($("in-lanes").value),
+        retention_days: intOr($("in-days").value)
+      });
+      var labels = { confirmed: "已确认", confirm: "待确认", risk: "风险" };
+      var rows = (d.items || []).map(function (x) {
+        return '<tr><td>' + esc(x.label) + '</td><td>' + esc(labels[x.status] || x.status) +
+          '</td><td>' + esc(x.detail) + '</td></tr>';
+      }).join("");
+      var s = d.summary || {};
+      $("requirement-review").hidden = false;
+      $("requirement-review").innerHTML = '<div class="muted" style="font-size:12px"><b>' +
+        (d.ready ? "需求已具备启动条件" : "需求还需要人工确认") + '</b>：已确认 ' +
+        fmt(s.confirmed || 0) + ' 项，待确认 ' + fmt(s.confirm || 0) + ' 项，风险 ' +
+        fmt(s.risk || 0) + ' 项。</div><table class="mini-table" style="margin-top:8px"><thead><tr><th>检查项</th><th>状态</th><th>说明</th></tr></thead><tbody>' + rows + '</tbody></table>';
+    } catch (e) { alertMsg("需求检查失败：" + e.message); }
+    finally { busy(false, btn); }
+  }
+
   async function resume(answer, btn) {
     if (!st.thread_id) { alertMsg("没有进行中的会话"); return; }
     busy(true, btn);
@@ -957,6 +983,7 @@
       }
     });
     $("btn-start").addEventListener("click", function () { start(this); });
+    $("btn-review-requirement").addEventListener("click", function () { reviewRequirement(this); });
     $("btn-restore").addEventListener("click", function () {
       var tid = null;
       try { tid = localStorage.getItem(KEY); } catch (e) { /* ignore */ }

@@ -30,7 +30,7 @@ from config.settings import BASE_DIR, DB_PATH
 
 from .rag import service as rag_service
 from .compare import FIELDS, compare as compare_competitor, export_docx
-from . import auth, compare_service, deviations, engineering_checks, metrics, netcheck, pointlist, sessions, tender
+from . import auth, compare_service, deviations, engineering_checks, metrics, netcheck, pointlist, requirement_review, sessions, tender
 from .builder import SpecGateError
 from .quote import build_quote
 from agent import service as agent_service
@@ -63,6 +63,13 @@ class GroupCompareRequest(BaseModel):
 class AgentStartRequest(BaseModel):
     text: str
     name: str | None = None
+    lanes: int | None = None
+    retention_days: int | None = None
+
+
+class RequirementReviewRequest(BaseModel):
+    text: str
+    project_name: str | None = None
     lanes: int | None = None
     retention_days: int | None = None
 
@@ -649,6 +656,14 @@ async def api_pointlist_analyze(file: UploadFile = File(...)) -> dict:
         return pointlist.parse_xlsx(raw, file.filename or "点位表.xlsx")
     except pointlist.PointListError as exc:
         raise HTTPException(status_code=400, detail={"message": str(exc), "gaps": []}) from exc
+
+
+@app.post("/api/requirements/review")
+def api_requirement_review(req: RequirementReviewRequest) -> dict:
+    """启动 Agent 前的确定性需求完整性检查。"""
+    if not req.text.strip():
+        raise HTTPException(status_code=400, detail={"message": "需求描述不能为空"})
+    return requirement_review.assess(req.text, req.lanes, req.retention_days, req.project_name)
 
 
 def _guard_thread(request: Request, thread_id: str) -> None:
