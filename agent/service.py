@@ -163,15 +163,7 @@ def edit_outputs(thread_id: str, patch: dict) -> dict:
         current = Spec.model_validate(values["spec"])
         spec = apply_edit(current, values.get("text") or "", patch)
         outputs = render_outputs(spec)
-        graph.update_state(_cfg(thread_id), {
-            "spec": spec.model_dump(),
-            "outputs": outputs,
-            "auto_fix_log": {
-                "type": "storage_nvr_capacity",
-                "message": (f"AI 已将 NVR 从 {patch['old_qty']} 台调整为 {nvr.qty} 台，"
-                            f"以容纳 {patch['disk_qty']} 块硬盘；请复核成本与机房容量。"),
-            },
-        })
+        graph.update_state(_cfg(thread_id), {"spec": spec.model_dump(), "outputs": outputs})
         snap = graph.get_state(_cfg(thread_id))
     return serialize(snap, thread_id)
 
@@ -201,7 +193,15 @@ def auto_fix_outputs(thread_id: str) -> dict:
         if note not in spec.boundaries.assumptions:
             spec.boundaries.assumptions.append(note)
         outputs = render_outputs(spec)
-        graph.update_state(_cfg(thread_id), {"spec": spec.model_dump(), "outputs": outputs})
+        graph.update_state(_cfg(thread_id), {
+            "spec": spec.model_dump(),
+            "outputs": outputs,
+            "auto_fix_log": {
+                "type": "storage_nvr_capacity",
+                "message": (f"AI 已将 NVR 从 {patch['old_qty']} 台调整为 {nvr.qty} 台，"
+                            f"以容纳 {patch['disk_qty']} 块硬盘；请复核成本与机房容量。"),
+            },
+        })
         snap = graph.get_state(_cfg(thread_id))
     return serialize(snap, thread_id)
 
